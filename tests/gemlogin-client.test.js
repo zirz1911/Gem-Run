@@ -90,6 +90,24 @@ test("profiles and workflow defaults are returned without credentials", async ()
   assert.equal(workflows.data[0].parameters[1].default, 2);
 });
 
+test("listProfiles masks colon-delimited proxy credentials", async () => {
+  const client = new GemLoginClient({
+    baseUrl: "http://local.example",
+    fetchImpl: async () => jsonResponse({data: [{proxy: "http://proxy.example:8000:alice:password"}]})
+  });
+
+  const profiles = await client.listProfiles();
+  assert.equal(profiles.data[0].proxy, "http://proxy.example:8000:***:***");
+});
+
+test("configured cloud tokens are redacted from arbitrary response fields", async () => {
+  const {client} = makeClient({success: true, upstream_context: {opaque_value: "secret"}});
+
+  const result = await client.executeCloud({profileId: 63, workflowId: "wf-1", parameter: {}, closeBrowser: true});
+  assert.equal(result.upstream_context.opaque_value, "***");
+  assert.equal(JSON.stringify(result).includes("secret"), false);
+});
+
 test("failed requests report a sanitized HTTP error", async () => {
   const client = new GemLoginClient({
     baseUrl: "http://local.example",

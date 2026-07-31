@@ -1,16 +1,17 @@
 const sensitiveName = /(?:api[_-]?key|authorization|cookie|credential|pass(?:word)?|secret|token|user(?:name)?)/i;
 
-function sanitize(value, sensitive = false) {
+function sanitize(value, secrets = [], sensitive = false) {
   if (sensitive) return "***";
-  if (Array.isArray(value)) return value.map((item) => sanitize(item));
+  if (typeof value === "string") return secrets.reduce((masked, secret) => masked.replaceAll(secret, "***"), value);
+  if (Array.isArray(value)) return value.map((item) => sanitize(item, secrets));
   if (!value || typeof value !== "object") return value;
 
   const parameterName = String(value.name ?? value.key ?? value.id ?? "");
   return Object.fromEntries(Object.entries(value).map(([key, item]) => {
     if (key === "proxy" && typeof item === "string") {
-      return [key, item.replace(/\/\/[^/@]+@/, "//***:***@")];
+      return [key, sanitize(item.replace(/\/\/[^/@]+@/, "//***:***@").replace(/^(\w+:\/\/[^:]+:\d+):[^:]*:[^:]*$/, "$1:***:***"), secrets)];
     }
-    return [key, sanitize(item, sensitiveName.test(key) || (key === "default" && sensitiveName.test(parameterName)))];
+    return [key, sanitize(item, secrets, sensitiveName.test(key) || (key === "default" && sensitiveName.test(parameterName)))];
   }));
 }
 
@@ -21,6 +22,7 @@ export class GemLoginClient {
     this.cloudDeviceId = cloudDeviceId;
     this.cloudSoftId = cloudSoftId;
     this.cloudToken = cloudToken;
+    this.secrets = [cloudToken].filter(Boolean);
     this.fetchImpl = fetchImpl;
   }
 
@@ -39,7 +41,7 @@ export class GemLoginClient {
       throw new Error(`GemLogin request failed (HTTP ${response.status}): unavailable`);
     }
     try {
-      return sanitize(await response.json());
+      return sanitize(await response.json(), this.secrets);
     } catch {
       throw new Error(`GemLogin request failed (HTTP ${response.status}): invalid JSON response`);
     }
