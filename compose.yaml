@@ -1,0 +1,14 @@
+services:
+  gem-run:
+    build: .
+    ports:
+      - "127.0.0.1:3200:3200"
+    environment:
+      GEMLOGIN_BASE: http://host.docker.internal:1010
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - gem-run-data:/app/data
+
+volumes:
+  gem-run-data:
