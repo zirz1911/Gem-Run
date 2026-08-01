@@ -21,8 +21,10 @@ function validHost(host) {
 
 export function parseProxy(rawProxy) {
   if (typeof rawProxy !== "string") throw new Error("Proxy must be a string");
-  const match = rawProxy.trim().match(/^([a-z][a-z0-9+.-]*):\/\/([^/:\s]+):(\d+)(?::([^:\s]+):([^:\s]+))?$/i);
-  if (!match) throw new Error("Proxy must include scheme, host, port, and complete credentials");
+  const value = rawProxy.trim();
+  const normalized = /^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `http://${value}`;
+  const match = normalized.match(/^([a-z][a-z0-9+.-]*):\/\/([^/:\s]+):(\d+)(?::([^:\s]+):([^:\s]+))?$/i);
+  if (!match) throw new Error("Proxy must include host, port, and complete credentials");
   const [, scheme, host, portText, username, password] = match;
   if (!validHost(host)) throw new Error("Proxy host is invalid");
   const port = Number(portText);

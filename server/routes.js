@@ -5,7 +5,7 @@ const invalidRunRequests = new Set([
   "workflow_id is required", "profile_mode must be existing or new", "profile_id is required",
   "cleanup is only available for new profiles", "profile_name is required", "group_id is required",
   "proxy_mode must be none, manual, or random", "Proxy must be a string",
-  "Proxy must include scheme, host, port, and complete credentials", "Proxy host is invalid",
+  "Proxy must include host, port, and complete credentials", "Proxy host is invalid",
   "Proxy port must be between 1 and 65535"
 ]);
 const runFields = ["workflow_id", "workflow_name", "profile_mode", "profile_id", "profile_name", "group_id", "proxy_mode", "raw_proxy", "parameter", "cleanup_requested"];

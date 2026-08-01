@@ -28,13 +28,16 @@ test("proxy credentials round-trip without storing plaintext", () => {
 });
 
 test("parseProxy normalizes supported proxy forms and rejects malformed values", () => {
+  assert.deepEqual(parseProxy("proxy.example:8080"), {
+    scheme: "http", host: "proxy.example", port: 8080, username: null, password: null
+  });
   assert.deepEqual(parseProxy("HTTP://Proxy.EXAMPLE:8080"), {
     scheme: "http", host: "proxy.example", port: 8080, username: null, password: null
   });
   assert.deepEqual(parseProxy("socks5://proxy.example:1080:alice:secret"), {
     scheme: "socks5", host: "proxy.example", port: 1080, username: "alice", password: "secret"
   });
-  for (const rawProxy of ["proxy.example:8080", "http://:8080", "http://-host:8080", "http://host:70000", "http://host:8000:alice"]) {
+  for (const rawProxy of ["http://:8080", "http://-host:8080", "http://host:70000", "http://host:8000:alice"]) {
     assert.throws(() => parseProxy(rawProxy));
   }
 });
