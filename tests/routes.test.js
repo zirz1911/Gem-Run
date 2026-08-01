@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {createApp} from "../server/app.js";
 
-function makeApp({client = {}, proxyStore = {}, runStore = {}, runService = {}} = {}) {
+function makeApp({client = {}, proxyStore = {}, runStore = {}, runService = {}, settingsStore = null} = {}) {
   return createApp({
     config: {}, gemloginClient: {
       status: async () => ({token: "cloud-secret"}),
@@ -17,10 +17,21 @@ function makeApp({client = {}, proxyStore = {}, runStore = {}, runService = {}} 
       create: () => ({id: 2}), get: () => null, setEnabled: () => false, replaceCredentials: () => null, remove: () => false,
       ...proxyStore
     },
-    runStore: {listRecent: () => [], get: () => null, ...runStore},
+    runStore: {listRecent: () => [], get: () => null, ...runStore}, settingsStore,
     runService: {start: async (input) => ({id: 1, ...input, status: "queued"}), get: () => null, ...runService}
   });
 }
+
+test("settings save only returns configured flags", async () => {
+  const values = {};
+  const client = {cloudDeviceId: "", cloudSoftId: "", cloudToken: "", configureCloud(next) { Object.assign(this, next); }};
+  const settingsStore = {setMany(next) { Object.assign(values, next); return values; }};
+  const app = makeApp({client, settingsStore});
+  const response = await request(app, "/api/settings", {method: "PATCH", headers: {"content-type": "application/json"}, body: JSON.stringify({device_id: "device", soft_id: "1", token: "cloud-secret"})});
+  assert.deepEqual(response, {status: 200, body: {cloud: {device_id: true, soft_id: true, token: true}}});
+  assert.equal(JSON.stringify(response.body).includes("cloud-secret"), false);
+  assert.deepEqual(values, {cloud_device_id: "device", cloud_soft_id: "1", cloud_token: "cloud-secret"});
+});
 
 async function request(app, path, options) {
   const server = app.listen(0);

@@ -40,6 +40,14 @@ h1 span { color: var(--accent); }
 .status-line::before { content: ""; display: inline-block; width: 8px; height: 8px; margin: 0 8px 1px 0; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 4px rgb(8 124 120 / 12%); }
 .status-line[data-state="error"]::before { background: var(--accent); box-shadow: 0 0 0 4px rgb(230 83 47 / 12%); }
 .error-line { margin-top: 10px; padding: 10px 12px; color: var(--accent-dark); background: #fff0eb; border-left: 3px solid var(--accent); }
+.settings-menu { margin-top: 18px; }
+.settings-menu summary { width: fit-content; color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+.settings-menu summary::marker { color: var(--accent); }
+.settings-menu form { display: grid; gap: 12px; max-width: 420px; margin-top: 14px; padding: 16px; background: rgb(255 253 248 / 96%); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.settings-copy { margin: 0 0 2px; color: var(--muted); font-size: .77rem; line-height: 1.45; }
+.settings-actions { display: flex; align-items: center; gap: 12px; padding-top: 4px; }
+.settings-actions button { min-height: 36px; padding: 7px 10px; font-size: .75rem; }
+#settings-state { color: var(--teal); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .68rem; }
 
 .dashboard-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; padding-top: 16px; }
 .panel { min-width: 0; padding: 24px; background: rgb(255 253 248 / 94%); border: 1px solid var(--line); border-radius: 3px; box-shadow: var(--shadow); }
@@ -123,6 +131,7 @@ legend { padding: 0; }
   .masthead { grid-template-columns: 1fr; gap: 22px; padding-bottom: 22px; }
   h1 { font-size: clamp(3.3rem, 18vw, 5rem); }
   .service-block { padding: 14px 0 0; border-top: 1px solid var(--line-strong); border-left: 0; }
+  .settings-menu form { max-width: none; }
   .dashboard-grid { display: block; padding-top: 12px; }
   .panel { margin-bottom: 12px; padding: 18px 16px; }
   .panel-heading { gap: 10px; }

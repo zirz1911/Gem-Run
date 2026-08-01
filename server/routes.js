@@ -40,6 +40,9 @@ function safeRun(run) {
     cleanup_status: run.cleanup_status ?? null, created_at: run.created_at ?? null, started_at: run.started_at ?? null, finished_at: run.finished_at ?? null};
 }
 function safeGroup(group) { return {id: group.id ?? group.group_id, name: group.name ?? group.group_name ?? null}; }
+function safeSettings(client) {
+  return {cloud: {device_id: Boolean(client?.cloudDeviceId), soft_id: Boolean(client?.cloudSoftId), token: Boolean(client?.cloudToken)}};
+}
 function inputFields(body) { return Object.fromEntries(runFields.filter((field) => Object.hasOwn(body ?? {}, field)).map((field) => [field, body[field]])); }
 function validProxyInput(body, required = false) {
   if (required && (!Object.hasOwn(body ?? {}, "label") || !Object.hasOwn(body ?? {}, "raw_proxy"))) throw new Error();
@@ -55,7 +58,7 @@ function validRunInput(input) {
 function unavailable(response) { return response.status(503).json({error: "GemLogin unavailable", code: "gemlogin_unavailable"}); }
 function proxyById(proxyStore, id) { return proxyStore.list().find((proxy) => String(proxy.id) === String(id)); }
 
-export function createRoutes({gemloginClient, proxyStore, runStore, runService}) {
+export function createRoutes({gemloginClient, proxyStore, runStore, runService, settingsStore}) {
   const router = express.Router();
   const gemlogin = (method, map) => async (_request, response) => {
     if (!gemloginClient) return unavailable(response);
@@ -66,6 +69,20 @@ export function createRoutes({gemloginClient, proxyStore, runStore, runService})
     if (!gemloginClient) return response.json({app: "ok", gemlogin: "not configured"});
     try { await gemloginClient.status(); return response.json({app: "ok", gemlogin: "available"}); }
     catch { return response.json({app: "ok", gemlogin: "unavailable"}); }
+  });
+  router.get("/api/settings", (_request, response) => response.json(safeSettings(gemloginClient)));
+  router.patch("/api/settings", (request, response) => {
+    if (!settingsStore || !gemloginClient) return response.status(503).json({error: "Settings unavailable"});
+    const allowed = ["device_id", "soft_id", "token"];
+    if (Object.keys(request.body ?? {}).some((key) => !allowed.includes(key)) || Object.values(request.body ?? {}).some((value) => typeof value !== "string" || value.length > 1000)) {
+      return response.status(400).json({error: "Invalid settings request"});
+    }
+    try {
+      const values = Object.fromEntries(Object.entries(request.body ?? {}).map(([key, value]) => [`cloud_${key}`, value]));
+      const saved = settingsStore.setMany(values);
+      gemloginClient.configureCloud({cloudDeviceId: saved.cloud_device_id || gemloginClient.cloudDeviceId, cloudSoftId: saved.cloud_soft_id || gemloginClient.cloudSoftId, cloudToken: saved.cloud_token || gemloginClient.cloudToken});
+      return response.json(safeSettings(gemloginClient));
+    } catch { return response.status(400).json({error: "Invalid settings request"}); }
   });
   router.get("/api/gemlogin/status", gemlogin("status", () => ({connected: true})));
   router.get("/api/gemlogin/profiles", gemlogin("listProfiles", (payload) => items(payload).map(safeProfile)));

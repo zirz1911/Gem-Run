@@ -19,6 +19,16 @@
           <span class="section-label">SERVICE STATUS</span>
           <p id="status" class="status-line" role="status" aria-live="polite">Loading dashboard…</p>
           <p id="error" class="error-line" role="alert" hidden></p>
+          <details class="settings-menu">
+            <summary>Settings <span aria-hidden="true">↘</span></summary>
+            <form id="settings-form">
+              <p class="settings-copy">GemLogin Cloud values are encrypted locally and never shown again after saving.</p>
+              <label class="field"><span>Device ID</span><input name="device_id" type="password" autocomplete="off" spellcheck="false" placeholder="Not configured"></label>
+              <label class="field"><span>Soft ID</span><input name="soft_id" type="password" autocomplete="off" spellcheck="false" placeholder="Not configured"></label>
+              <label class="field"><span>Cloud token</span><input name="token" type="password" autocomplete="off" spellcheck="false" placeholder="Not configured"></label>
+              <div class="settings-actions"><button class="secondary-button" type="submit">Save settings <span aria-hidden="true">↗</span></button><span id="settings-state" role="status" aria-live="polite"></span></div>
+            </form>
+          </details>
         </div>
       </header>
 

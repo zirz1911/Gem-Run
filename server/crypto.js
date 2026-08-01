@@ -1,3 +1,4 @@
+import {chmodSync, existsSync, readFileSync, writeFileSync} from "node:fs";
 import {createCipheriv, createDecipheriv, randomBytes} from "node:crypto";
 
 function requireKey(key) {
@@ -8,6 +9,19 @@ function requireKey(key) {
 export function decodeEncryptionKey(value) {
   const key = Buffer.from(value || "", "base64");
   return requireKey(key);
+}
+
+export function loadOrCreateEncryptionKey(value, filename) {
+  if (value) {
+    const key = decodeEncryptionKey(value);
+    if (!existsSync(filename)) writeFileSync(filename, `${key.toString("base64")}\n`, {mode: 0o600, flag: "wx"});
+    return key;
+  }
+  if (existsSync(filename)) return decodeEncryptionKey(readFileSync(filename, "utf8").trim());
+  const key = randomBytes(32);
+  writeFileSync(filename, `${key.toString("base64")}\n`, {mode: 0o600, flag: "wx"});
+  chmodSync(filename, 0o600);
+  return key;
 }
 
 export function encryptSecret(value, key) {

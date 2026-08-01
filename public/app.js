@@ -3,6 +3,7 @@ let status;
 let error;
 let runForm;
 let proxyForm;
+let settingsForm;
 const activeStatuses = new Set(["queued", "submitted", "running"]);
 let data = {workflows: [], groups: [], profiles: [], proxies: [], activeRun: null};
 let poller;
@@ -30,6 +31,12 @@ function updateProxyCount() {
   const count = parseProxyLines(proxyForm?.elements.raw_proxy?.value).length;
   const target = $("#proxy-count");
   if (target) target.textContent = `${count} ${count === 1 ? "proxy" : "proxies"} detected`;
+}
+function renderSettings(settings) {
+  const cloud = settings?.cloud || {};
+  for (const name of ["device_id", "soft_id", "token"]) {
+    settingsForm.elements[name].placeholder = cloud[name] ? "Configured — enter to replace" : "Not configured";
+  }
 }
 function syncRunForm() {
   const isNew = profileMode() === "new";
@@ -102,10 +109,11 @@ async function optionalLoad(path, fallback) {
 }
 async function load() {
   const history = loadRuns();
-  const [health, workflows, groups, profiles] = await Promise.all([optionalLoad("health", null), optionalLoad("gemlogin/workflows", []), optionalLoad("gemlogin/groups", []), optionalLoad("gemlogin/profiles", [])]);
+  const [health, workflows, groups, profiles, settings] = await Promise.all([optionalLoad("health", null), optionalLoad("gemlogin/workflows", []), optionalLoad("gemlogin/groups", []), optionalLoad("gemlogin/profiles", []), optionalLoad("settings", null)]);
   data = {...data, workflows, groups, profiles};
   status.dataset.state = health?.app === "ok" ? "ready" : "error";
   status.textContent = health?.app === "ok" ? `Service ready; GemLogin ${health.gemlogin}.` : "Service unavailable.";
+  renderSettings(settings);
   option($("#workflow"), workflows, "Choose a workflow"); option($("#group"), groups, "Choose a group"); option($("#profile"), profiles, "Choose a profile");
   renderProfiles(); renderParameters(); await Promise.all([loadProxies(), history]);
 }
@@ -121,7 +129,7 @@ function poll(id) {
   }, 2000);
 }
 function initialize() {
-  status = $("#status"); error = $("#error"); runForm = $("#run-form"); proxyForm = $("#proxy-form");
+  status = $("#status"); error = $("#error"); runForm = $("#run-form"); proxyForm = $("#proxy-form"); settingsForm = $("#settings-form");
   syncRunForm();
   runForm.addEventListener("change", (event) => { if (event.target.name === "profile_mode" || event.target.name === "proxy_mode") syncRunForm(); if (event.target.id === "workflow") renderParameters(); });
   runForm.addEventListener("submit", async (event) => {
@@ -150,6 +158,13 @@ function initialize() {
   });
   proxyForm.elements.raw_proxy.addEventListener("input", updateProxyCount);
   updateProxyCount();
+  settingsForm.addEventListener("submit", async (event) => {
+    event.preventDefault(); setError(""); const form = new FormData(settingsForm);
+    try {
+      const saved = await api("settings", {method: "PATCH", headers: {"content-type": "application/json"}, body: JSON.stringify(Object.fromEntries(form))});
+      settingsForm.reset(); renderSettings(saved); $("#settings-state").textContent = "Saved securely."; status.textContent = "Settings saved; GemLogin is ready.";
+    } catch (cause) { $("#settings-state").textContent = ""; setError(cause.message); }
+  });
   load();
 }
 if (typeof document !== "undefined") initialize();

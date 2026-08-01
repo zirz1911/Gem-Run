@@ -36,6 +36,13 @@ export function openDatabase(filename) {
       started_at TEXT,
       finished_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS settings (
+      name TEXT PRIMARY KEY,
+      value_ciphertext TEXT NOT NULL,
+      iv TEXT NOT NULL,
+      auth_tag TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
   return db;
 }

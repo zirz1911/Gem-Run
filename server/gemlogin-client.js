@@ -26,6 +26,11 @@ export class GemLoginClient {
     this.fetchImpl = fetchImpl;
   }
 
+  configureCloud({cloudDeviceId, cloudSoftId, cloudToken}) {
+    Object.assign(this, {cloudDeviceId, cloudSoftId, cloudToken});
+    this.secrets = [cloudToken].filter(Boolean);
+  }
+
   async request(baseUrl, path, {method = "GET", body, signal} = {}) {
     let response;
     try {
