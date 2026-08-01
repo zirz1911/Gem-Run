@@ -48,6 +48,7 @@ function syncRunForm() {
   runForm.elements.group_id.required = isNew;
   $("#manual-proxy").hidden = !isNew || proxyMode() !== "manual";
   runForm.elements.raw_proxy.required = isNew && proxyMode() === "manual";
+  $("#parallel-options").hidden = !isNew || runForm.elements.execution_mode.value !== "parallel";
 }
 function renderParameters() {
   const workflow = data.workflows.find((item) => String(item.id) === $("#workflow").value);
@@ -121,7 +122,7 @@ async function deleteProxies(ids, message) {
 function renderRuns(runs) {
   data.activeRun = runs.find(active) || null;
   $("#run-submit").disabled = Boolean(data.activeRun);
-  $("#runs").replaceChildren(...runs.map((run) => Object.assign(document.createElement("li"), {textContent: `#${run.id} · ${run.workflow_name || run.workflow_id} · ${run.status}${run.cleanup_status ? ` · cleanup: ${run.cleanup_status}` : ""}${run.error_message ? ` · ${run.error_message}` : ""}`})));
+  $("#runs").replaceChildren(...runs.map((run) => Object.assign(document.createElement("li"), {textContent: `#${run.id}${run.batch_id ? ` · batch ${run.batch_index}/${run.batch_total}` : ""} · ${run.workflow_name || run.workflow_id} · ${run.status}${run.cleanup_status ? ` · cleanup: ${run.cleanup_status}` : ""}${run.error_message ? ` · ${run.error_message}` : ""}`})));
   if (data.activeRun) poll(data.activeRun.id);
 }
 async function loadProxies() {
@@ -168,15 +169,15 @@ function poll(id) {
 function initialize() {
   status = $("#status"); error = $("#error"); runForm = $("#run-form"); proxyForm = $("#proxy-form"); settingsForm = $("#settings-form");
   syncRunForm();
-  runForm.addEventListener("change", (event) => { if (event.target.name === "profile_mode" || event.target.name === "proxy_mode") syncRunForm(); if (event.target.id === "workflow") renderParameters(); });
+  runForm.addEventListener("change", (event) => { if (["profile_mode", "proxy_mode", "execution_mode"].includes(event.target.name)) syncRunForm(); if (event.target.id === "workflow") renderParameters(); });
   runForm.addEventListener("submit", async (event) => {
   event.preventDefault(); setError("");
   const form = new FormData(runForm); const workflow = data.workflows.find((item) => String(item.id) === form.get("workflow_id"));
   const payload = {workflow_id: form.get("workflow_id"), workflow_name: workflow?.name || null, profile_mode: form.get("profile_mode"), cleanup_requested: form.has("cleanup_requested"), parameter: {}};
   payload.parameter = serializeParameters($("#parameters").querySelectorAll("[name^='parameter.']"));
   if (payload.profile_mode === "existing") payload.profile_id = form.get("profile_id");
-  else Object.assign(payload, {profile_name: form.get("profile_name"), group_id: form.get("group_id"), proxy_mode: form.get("proxy_mode"), ...(form.get("proxy_mode") === "manual" ? {raw_proxy: form.get("raw_proxy")} : {})});
-  try { $("#run-submit").disabled = true; const run = await api("runs", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); runForm.elements.raw_proxy.value = ""; status.textContent = `Run #${run.id} started.`; await loadRuns(); }
+  else Object.assign(payload, {profile_name: form.get("profile_name"), group_id: form.get("group_id"), proxy_mode: form.get("proxy_mode"), repeat_count: Number(form.get("repeat_count") || 1), execution_mode: form.get("execution_mode"), max_concurrency: form.get("execution_mode") === "parallel" ? Number(form.get("max_concurrency") || 2) : 1, ...(form.get("proxy_mode") === "manual" ? {raw_proxy: form.get("raw_proxy")} : {})});
+  try { $("#run-submit").disabled = true; const run = await api("runs", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); runForm.elements.raw_proxy.value = ""; status.textContent = `${run.batch_id ? `Batch ${run.batch_id}` : `Run #${run.id}`} started.`; await loadRuns(); }
   catch (cause) { setError(cause.message); $("#run-submit").disabled = false; }
 });
   proxyForm.addEventListener("submit", async (event) => {

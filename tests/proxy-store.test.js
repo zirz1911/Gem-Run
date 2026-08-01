@@ -86,6 +86,14 @@ test("ProxyStore picks and marks an enabled proxy", (t) => {
   assert.equal(proxyStore.setEnabled(disabled.id, true), true);
 });
 
+test("ProxyStore can reserve different enabled proxies for a batch", (t) => {
+  const {proxyStore} = makeStores(t);
+  const first = proxyStore.create({label: "One", raw_proxy: "http://one.example:8000", enabled: true});
+  const second = proxyStore.create({label: "Two", raw_proxy: "http://two.example:8000", enabled: true});
+  const picked = proxyStore.pickRandomEnabled([first.id]);
+  assert.equal(picked.id, second.id);
+});
+
 test("RunStore creates, updates, finds active, and retains proxy references", (t) => {
   const {proxyStore, runStore} = makeStores(t);
   const proxy = proxyStore.create({label: "Primary", raw_proxy: "http://proxy.example:8080", enabled: true});
@@ -101,6 +109,12 @@ test("RunStore creates, updates, finds active, and retains proxy references", (t
   assert.equal(runStore.listRecent(1)[0].remote_run_id, "remote-1");
   proxyStore.remove(proxy.id);
   assert.equal(runStore.get(run.id).proxy_id, proxy.id);
+});
+
+test("RunStore retains batch metadata", (t) => {
+  const {runStore} = makeStores(t);
+  const run = runStore.create({workflow_id: "workflow-1", profile_mode: "new", cleanup_requested: false, status: "queued", cleanup_status: "not_requested", batch_id: "batch-1", batch_index: 2, batch_total: 3});
+  assert.deepEqual([run.batch_id, run.batch_index, run.batch_total], ["batch-1", 2, 3]);
 });
 
 test("RunStore accepts ISO timestamps and rejects non-ISO timestamps", (t) => {

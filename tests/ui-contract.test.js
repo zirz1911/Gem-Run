@@ -17,6 +17,12 @@ test("dashboard exposes the required panels without cloud credential names", asy
   assert.match(html, /id="delete-selected-proxies"/);
   assert.match(html, /id="delete-all-proxies"/);
   assert.match(script, /Promise\.allSettled\(ids\.map/);
+  assert.match(html, /name="repeat_count"/);
+  assert.match(html, /name="execution_mode"/);
+  assert.match(html, /name="max_concurrency"/);
+  assert.match(await readFile(new URL("public/styles.css", root), "utf8"), /\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
+  assert.match(script, /repeat_count/);
+  assert.match(script, /max_concurrency/);
 });
 
 test("workflow form serialization preserves checked and unchecked booleans", async () => {

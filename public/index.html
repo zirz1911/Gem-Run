@@ -63,10 +63,17 @@
                 </div>
               </fieldset>
               <label id="manual-proxy" class="field" hidden><span>One-time proxy</span><input name="raw_proxy" type="password" autocomplete="off" spellcheck="false" placeholder="host:port:user:pass"></label>
+              <div class="batch-options">
+                <div class="form-grid">
+                  <label class="field"><span>New profiles / rounds</span><input name="repeat_count" type="number" min="1" max="100" value="1" inputmode="numeric"></label>
+                  <fieldset class="choice-fieldset"><legend>Run mode</legend><div class="choice-grid"><label class="choice-card compact-choice"><input type="radio" name="execution_mode" value="sequential" checked><span><strong>One by one</strong><small>Safer and easier to monitor.</small></span></label><label class="choice-card compact-choice"><input type="radio" name="execution_mode" value="parallel"><span><strong>Parallel</strong><small>Run several profiles at once.</small></span></label></div></fieldset>
+                </div>
+                <label id="parallel-options" class="field" hidden><span>Maximum concurrent profiles</span><input name="max_concurrency" type="number" min="1" max="10" value="2" inputmode="numeric"><small class="input-hint">Start with 2; GemLogin performance and workflow behavior can limit this.</small></label>
+              </div>
               <label class="check-line"><input name="cleanup_requested" type="checkbox"><span>Close and delete this new profile after the run</span></label>
             </div>
             <fieldset id="parameters" class="parameters-fieldset"><legend>Workflow parameters</legend><p>Select a workflow.</p></fieldset>
-            <div class="form-actions"><p class="form-note"><span class="accent-mark">●</span> One active run at a time</p><button id="run-submit" class="primary-button" type="submit">Run workflow <span aria-hidden="true">↗</span></button></div>
+            <div class="form-actions"><p class="form-note"><span class="accent-mark">●</span> One active batch at a time</p><button id="run-submit" class="primary-button" type="submit">Run workflow <span aria-hidden="true">↗</span></button></div>
           </form>
         </section>
 

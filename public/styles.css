@@ -16,6 +16,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { min-width: 320px; }
 body {
   min-height: 100vh;
@@ -91,6 +92,10 @@ legend { padding: 0; }
 .choice-card small { color: var(--muted); font-size: .74rem; line-height: 1.35; }
 .new-profile-fields { margin-top: 22px; padding: 18px; background: rgb(246 241 232 / 75%); border: 1px solid var(--line); border-left: 3px solid var(--teal); }
 .new-profile-fields fieldset { margin-top: 18px; }
+.batch-options { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.batch-options .choice-fieldset { margin-top: 0; }
+.compact-choice { min-height: 0; padding: 9px; }
+.batch-options .input-hint { display: block; margin-top: 5px; }
 .check-line { display: flex; align-items: flex-start; gap: 9px; margin-top: 16px; color: var(--muted); font-size: .82rem; line-height: 1.4; cursor: pointer; }
 .check-line input { flex: 0 0 auto; margin-top: 2px; accent-color: var(--teal); }
 .input-hint { margin: 8px 0 0; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .68rem; }

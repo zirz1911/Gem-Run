@@ -163,6 +163,34 @@ test("refreshProfileList clicks GemLogin's real profile refresh control", async 
   assert.match(messages[0].params.expression, /Refresh profile list button not found/);
 });
 
+test("refreshProfileList navigates to profiles when GemLogin is on another page", async () => {
+  const messages = [];
+  class FakeWebSocket {
+    constructor(url) { this.url = url; this.listeners = {}; }
+    addEventListener(name, listener) {
+      this.listeners[name] = listener;
+      if (name === "open") queueMicrotask(listener);
+    }
+    send(message) {
+      messages.push(JSON.parse(message));
+      queueMicrotask(() => this.listeners.message({data: JSON.stringify({id: 1, result: {result: {value: true}}})}));
+    }
+    close() {}
+  }
+  const client = new GemLoginClient({
+    baseUrl: "http://local.example",
+    cdpBase: "http://host.example:9223",
+    fetchImpl: async (url) => url.endsWith("/json/list")
+      ? jsonResponse([{type: "page", url: "http://localhost:1010/#/settings", webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/page/abc"}])
+      : jsonResponse({success: true}),
+    webSocketImpl: FakeWebSocket
+  });
+
+  await client.refreshProfileList();
+  assert.match(messages[0].params.expression, /location\.hash/);
+  assert.match(messages[0].params.expression, /#\/profiles/);
+});
+
 test("configured cloud tokens are redacted from arbitrary response fields", async () => {
   const {client} = makeClient({success: true, upstream_context: {opaque_value: "secret"}});
 

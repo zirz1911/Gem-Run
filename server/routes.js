@@ -4,11 +4,12 @@ import {parseProxy} from "./proxy-store.js";
 const invalidRunRequests = new Set([
   "workflow_id is required", "profile_mode must be existing or new", "profile_id is required",
   "cleanup is only available for new profiles", "profile_name is required", "group_id is required",
-  "proxy_mode must be none, manual, or random", "Proxy must be a string",
+  "proxy_mode must be none, manual, or random", "repeat_count must be between 1 and 100", "repeat_count is only available for new profiles",
+  "execution_mode must be sequential or parallel", "max_concurrency must be between 1 and 10", "not enough enabled proxies for batch", "Proxy must be a string",
   "Proxy must include host, port, and complete credentials", "Proxy host is invalid",
   "Proxy port must be between 1 and 65535"
 ]);
-const runFields = ["workflow_id", "workflow_name", "profile_mode", "profile_id", "profile_name", "group_id", "proxy_mode", "raw_proxy", "parameter", "cleanup_requested"];
+const runFields = ["workflow_id", "workflow_name", "profile_mode", "profile_id", "profile_name", "group_id", "proxy_mode", "raw_proxy", "parameter", "cleanup_requested", "repeat_count", "execution_mode", "max_concurrency"];
 const sensitiveName = /(?:api[_-]?key|access[_-]?key|private[_-]?key|authorization|(?:^|[_-])auth(?:$|[_-])|(?:^|[_-])bearer(?:$|[_-])|(?:^|[_-])headers?(?:$|[_-])|(?:^|[_-])config(?:uration)?(?:$|[_-])|cookie|credential|pass(?:word)?|secret|token|user(?:name)?)/i;
 
 function items(payload) { return Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []; }
@@ -34,11 +35,13 @@ function safeWorkflow(workflow) {
     }).filter(([, field]) => field !== undefined)))};
 }
 function safeRun(run) {
+  const batch = run.batch_id ? {batch_id: run.batch_id, batch_index: run.batch_index, batch_total: run.batch_total} : {};
   return {id: run.id, workflow_id: run.workflow_id, workflow_name: run.workflow_name ?? null, profile_mode: run.profile_mode,
     profile_id: run.profile_id ?? null, created_profile_id: run.created_profile_id ?? null, proxy_id: run.proxy_id ?? null,
     cleanup_requested: Boolean(run.cleanup_requested), status: run.status, error_message: run.error_message ?? null,
-    cleanup_status: run.cleanup_status ?? null, created_at: run.created_at ?? null, started_at: run.started_at ?? null, finished_at: run.finished_at ?? null};
+    cleanup_status: run.cleanup_status ?? null, created_at: run.created_at ?? null, started_at: run.started_at ?? null, finished_at: run.finished_at ?? null, ...batch};
 }
+function safeBatch(batch) { return {batch_id: batch.batch_id, execution_mode: batch.execution_mode, max_concurrency: batch.max_concurrency, runs: batch.runs.map(safeRun)}; }
 function safeGroup(group) { return {id: group.id ?? group.group_id, name: group.name ?? group.group_name ?? null}; }
 function safeSettings(client) {
   return {cloud: {device_id: Boolean(client?.cloudDeviceId), soft_id: Boolean(client?.cloudSoftId), token: Boolean(client?.cloudToken)}};
@@ -124,7 +127,10 @@ export function createRoutes({gemloginClient, proxyStore, runStore, runService, 
   });
   router.post("/api/runs", async (request, response) => {
     if (!runService) return response.status(503).json({error: "Run service unavailable"});
-    try { return response.status(202).json(safeRun(await runService.start(validRunInput(inputFields(request.body))))); }
+    try {
+      const started = await runService.start(validRunInput(inputFields(request.body)));
+      return response.status(202).json(started.batch_id ? safeBatch(started) : safeRun(started));
+    }
     catch (error) {
       if (error?.message === "an active run already exists") return response.status(409).json({error: "An active run already exists"});
       if (error?.message === "invalid run input" || invalidRunRequests.has(error?.message)) return response.status(400).json({error: "Invalid run request"});

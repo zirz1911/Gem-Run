@@ -1,6 +1,6 @@
 # Gem-Run
 
-Gem-Run is a local Docker dashboard for running GemLogin workflows. It can run an existing profile or create a temporary profile with no proxy, a manually entered proxy, or a randomly selected proxy from the saved proxy pool.
+Gem-Run is a local Docker dashboard for running GemLogin workflows. It can run an existing profile or create one or more temporary profiles with no proxy, a manually entered proxy, or randomly selected proxies from the saved proxy pool.
 
 ## Requirements
 
@@ -80,11 +80,13 @@ Select an existing profile and a workflow, then run it. The existing-profile pat
 
 ### New profile
 
-Select **New profile**, enter a name and group, then choose:
+Select **New profile**, enter a name and group, then choose the number of profiles/rounds and:
 
 - **None**: no proxy
 - **Manual**: one proxy value
 - **Random**: one enabled proxy from the saved proxy pool
+
+For more than one round, names receive a suffix such as `Paji-01`, `Paji-02`. Choose **One by one** for sequential execution or **Parallel** with a maximum concurrency. Start with a concurrency of `2`; each round has its own profile, workflow status, and cleanup result. Random proxy mode reserves a different enabled proxy for each round and fails before creating profiles if the pool is too small.
 
 The run sequence is:
 
@@ -92,7 +94,17 @@ The run sequence is:
 create profile -> open profile -> refresh GemLogin list -> execute workflow -> poll status
 ```
 
+### Batch run lifecycle
+
+Each new-profile round follows the same lifecycle independently:
+
+```text
+create -> open -> refresh -> execute -> poll -> close/delete (if cleanup is enabled)
+```
+
 Enable cleanup to close and delete the temporary profile after the workflow finishes. Gem-Run also refreshes the GemLogin profile list after deletion, so the deleted profile disappears without a manual refresh.
+
+Parallel rounds share one serialized GemLogin profile-list refresh so the Electron UI does not receive competing refresh commands. Gem-Run still allows only one active batch at a time.
 
 ### Proxy formats
 

@@ -82,6 +82,18 @@ test("run route returns 202 and forwards only allowed fields", async () => {
   assert.deepEqual(body, {id: 1, workflow_id: "wf-1", workflow_name: null, profile_mode: "existing", profile_id: 63, created_profile_id: null, proxy_id: null, cleanup_requested: false, status: "queued", error_message: null, cleanup_status: null, created_at: null, started_at: null, finished_at: null});
 });
 
+test("batch run route forwards repeat and concurrency settings", async () => {
+  const received = {value: null};
+  const runService = {async start(input) { received.value = input; return {batch_id: "batch-1", runs: []}; }, get: () => null};
+  const {status, body} = await request(makeApp({runService}), "/api/runs", {
+    method: "POST", headers: {"content-type": "application/json"},
+    body: JSON.stringify({workflow_id: "wf-1", profile_mode: "new", profile_name: "Batch", group_id: "1", proxy_mode: "none", repeat_count: 3, execution_mode: "parallel", max_concurrency: 2})
+  });
+  assert.equal(status, 202);
+  assert.deepEqual(received.value, {workflow_id: "wf-1", profile_mode: "new", profile_name: "Batch", group_id: "1", proxy_mode: "none", repeat_count: 3, execution_mode: "parallel", max_concurrency: 2});
+  assert.deepEqual(body, {batch_id: "batch-1", runs: []});
+});
+
 test("workflow route masks sensitive defaults and drops upstream fields", async () => {
   const {status, body} = await request(makeApp(), "/api/gemlogin/workflows");
   assert.equal(status, 200);

@@ -1,7 +1,7 @@
 import {decryptSecret, encryptSecret} from "./crypto.js";
 
 const activeStatuses = ["queued", "submitted", "running"];
-const runColumns = new Set(["workflow_id", "workflow_name", "profile_mode", "profile_id", "created_profile_id", "proxy_id", "cleanup_requested", "status", "remote_run_id", "error_message", "cleanup_status", "started_at", "finished_at"]);
+const runColumns = new Set(["workflow_id", "workflow_name", "profile_mode", "profile_id", "created_profile_id", "proxy_id", "cleanup_requested", "status", "remote_run_id", "error_message", "cleanup_status", "batch_id", "batch_index", "batch_total", "started_at", "finished_at"]);
 
 function now() { return new Date().toISOString(); }
 
@@ -98,9 +98,11 @@ export class ProxyStore {
 
   remove(id) { return this.db.prepare("DELETE FROM proxies WHERE id = ?").run(id).changes > 0; }
 
-  pickRandomEnabled() {
+  pickRandomEnabled(excludedIds = []) {
     const pick = this.db.transaction(() => {
-      const row = this.db.prepare("SELECT * FROM proxies WHERE enabled = 1 ORDER BY RANDOM() LIMIT 1").get();
+      const excluded = [...new Set(excludedIds.map((id) => Number(id)).filter(Number.isInteger))];
+      const placeholders = excluded.map(() => "?").join(", ");
+      const row = this.db.prepare(`SELECT * FROM proxies WHERE enabled = 1${placeholders ? ` AND id NOT IN (${placeholders})` : ""} ORDER BY RANDOM() LIMIT 1`).get(...excluded);
       if (!row) return null;
       const timestamp = now();
       this.db.prepare("UPDATE proxies SET last_used_at = ?, updated_at = ? WHERE id = ?").run(timestamp, timestamp, row.id);
@@ -120,7 +122,8 @@ export class RunStore {
       workflow_id: input.workflow_id, workflow_name: input.workflow_name ?? null, profile_mode: input.profile_mode,
       profile_id: input.profile_id ?? null, created_profile_id: input.created_profile_id ?? null, proxy_id: input.proxy_id ?? null,
       cleanup_requested: input.cleanup_requested ? 1 : 0, status: input.status, remote_run_id: input.remote_run_id ?? null,
-      error_message: input.error_message ?? null, cleanup_status: input.cleanup_status, created_at: timestamp,
+      error_message: input.error_message ?? null, cleanup_status: input.cleanup_status, batch_id: input.batch_id ?? null,
+      batch_index: input.batch_index ?? null, batch_total: input.batch_total ?? null, created_at: timestamp,
       started_at: normalizeTimestamp(input.started_at), finished_at: normalizeTimestamp(input.finished_at)
     };
     const result = this.db.prepare(`INSERT INTO runs (${Object.keys(values).join(", ")}) VALUES (${Object.keys(values).map((key) => `@${key}`).join(", ")})`).run(values);

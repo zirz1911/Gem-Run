@@ -32,6 +32,9 @@ export function openDatabase(filename) {
       remote_run_id TEXT,
       error_message TEXT,
       cleanup_status TEXT NOT NULL,
+      batch_id TEXT,
+      batch_index INTEGER,
+      batch_total INTEGER,
       created_at TEXT NOT NULL,
       started_at TEXT,
       finished_at TEXT
@@ -44,5 +47,9 @@ export function openDatabase(filename) {
       updated_at TEXT NOT NULL
     );
   `);
+  const columns = new Set(db.prepare("PRAGMA table_info(runs)").all().map(({name}) => name));
+  for (const [name, definition] of [["batch_id", "TEXT"], ["batch_index", "INTEGER"], ["batch_total", "INTEGER"]]) {
+    if (!columns.has(name)) db.exec(`ALTER TABLE runs ADD COLUMN ${name} ${definition}`);
+  }
   return db;
 }

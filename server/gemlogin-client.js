@@ -86,7 +86,8 @@ export class GemLoginClient {
   async refreshProfileList({signal} = {}) {
     if (!this.cdpBase) throw new Error("GemLogin profile refresh is not configured");
     const targets = await this.request(this.cdpBase, "/json/list", {signal});
-    const target = targets.find((item) => item.type === "page" && item.url?.includes("#/profiles"));
+    const target = targets.find((item) => item.type === "page" && item.url?.includes("#/profiles"))
+      ?? targets.find((item) => item.type === "page");
     if (!target?.webSocketDebuggerUrl) throw new Error("GemLogin profile page is not available");
     const cdp = new URL(this.cdpBase);
     const targetUrl = new URL(target.webSocketDebuggerUrl);
@@ -111,7 +112,7 @@ export class GemLoginClient {
         params: {
           awaitPromise: true,
           returnByValue: true,
-          expression: `(async()=>{const b=[...document.querySelectorAll('button.el-button.is-plain.is-circle')].find(b=>b.querySelector('path')?.getAttribute('d')?.startsWith('M2 12'));if(!b)throw new Error('Refresh profile list button not found');b.click();await new Promise(r=>setTimeout(r,1000));return true})()`
+          expression: `(async()=>{if(!location.hash.startsWith('#/profiles')){location.hash='#/profiles';await new Promise(r=>setTimeout(r,1000))}const deadline=Date.now()+10000;while(Date.now()<deadline){const b=[...document.querySelectorAll('button.el-button.is-plain.is-circle')].find(b=>b.querySelector('path')?.getAttribute('d')?.startsWith('M2 12'));if(b){b.click();await new Promise(r=>setTimeout(r,1000));return true}await new Promise(r=>setTimeout(r,100))}throw new Error('Refresh profile list button not found')})()`
         }
       })));
       socket.addEventListener("message", (event) => {
