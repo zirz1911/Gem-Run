@@ -7,6 +7,12 @@ const statusNames = {
 };
 
 export function normalizeRemoteStatus(payload) {
+  const isRunning = payload?.is_running ?? payload?.data?.is_running;
+  if (typeof isRunning === "boolean") {
+    if (isRunning) return "running";
+    const message = String(payload?.message ?? payload?.data?.message ?? "").toLowerCase();
+    return /(fail|error|exception|timeout|not found|invalid)/.test(message) ? "failed" : "success";
+  }
   const value = payload?.status ?? payload?.data?.status ?? payload?.data?.state ?? payload?.state;
   return statusNames[String(value || "").toLowerCase()] ?? "submitted";
 }

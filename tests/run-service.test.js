@@ -41,6 +41,9 @@ test("normalizes supported remote status shapes", () => {
   assert.equal(normalizeRemoteStatus({data: {status: "success"}}), "success");
   assert.equal(normalizeRemoteStatus({status: "running"}), "running");
   assert.equal(normalizeRemoteStatus({data: {status: "unknown"}}), "submitted");
+  assert.equal(normalizeRemoteStatus({is_running: true, message: "Script is running"}), "running");
+  assert.equal(normalizeRemoteStatus({is_running: false, message: "Script is not running"}), "success");
+  assert.equal(normalizeRemoteStatus({is_running: false, message: "Script failed"}), "failed");
 });
 
 test("existing profile never calls create or delete", async () => {
