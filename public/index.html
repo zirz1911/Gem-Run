@@ -91,6 +91,11 @@
             <p id="proxy-count" class="input-hint" aria-live="polite">0 proxies detected</p>
             <div class="form-actions"><label class="check-line"><input name="enabled" type="checkbox" checked><span>Enabled for random selection</span></label><button class="secondary-button" type="submit">Save proxy <span aria-hidden="true">+</span></button></div>
           </form>
+          <div class="list-toolbar" aria-label="Proxy selection actions">
+            <label class="check-line"><input id="proxy-select-all" type="checkbox"><span>Select all</span></label>
+            <span id="proxy-selection-count" class="input-hint" aria-live="polite">0 selected</span>
+            <div class="list-actions"><button id="delete-selected-proxies" class="danger-button" type="button" disabled>Delete selected</button><button id="delete-all-proxies" class="danger-button" type="button" disabled>Delete all</button></div>
+          </div>
           <ul id="proxies" class="data-list" aria-live="polite"></ul>
         </section>
 

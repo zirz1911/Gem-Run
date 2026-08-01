@@ -14,6 +14,9 @@ test("dashboard exposes the required panels without cloud credential names", asy
     assert.match(html, new RegExp(`<h2[^>]*>${panel}</h2>`));
   }
   assert.doesNotMatch(script, /GEMLOGIN_CLOUD_(?:DEVICE_ID|SOFT_ID|TOKEN)/);
+  assert.match(html, /id="delete-selected-proxies"/);
+  assert.match(html, /id="delete-all-proxies"/);
+  assert.match(script, /Promise\.allSettled\(ids\.map/);
 });
 
 test("workflow form serialization preserves checked and unchecked booleans", async () => {

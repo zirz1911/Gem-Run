@@ -6,6 +6,7 @@ let proxyForm;
 let settingsForm;
 const activeStatuses = new Set(["queued", "submitted", "running"]);
 let data = {workflows: [], groups: [], profiles: [], proxies: [], activeRun: null};
+let selectedProxyIds = new Set();
 let poller;
 
 export function serializeParameters(controls) {
@@ -74,9 +75,15 @@ function renderProfiles() {
   $("#profiles").replaceChildren(...data.profiles.map((profile) => Object.assign(document.createElement("li"), {textContent: `${profile.name || profile.id} · ${profile.status || "unknown"}${profile.proxy ? ` · ${profile.proxy}` : ""}`})));
 }
 function renderProxies() {
+  selectedProxyIds = new Set([...selectedProxyIds].filter((id) => data.proxies.some((proxy) => String(proxy.id) === String(id))));
   $("#proxies").replaceChildren(...data.proxies.map((proxy) => {
     const row = document.createElement("li");
-    row.textContent = `${proxy.label} · ${proxy.scheme}://${proxy.host}:${proxy.port} · ${proxy.enabled ? "enabled" : "disabled"}`;
+    const summary = Object.assign(document.createElement("div"), {className: "proxy-summary"});
+    const select = Object.assign(document.createElement("input"), {type: "checkbox", className: "proxy-select", checked: selectedProxyIds.has(String(proxy.id)), ariaLabel: `Select ${proxy.label}`});
+    select.onchange = () => { if (select.checked) selectedProxyIds.add(String(proxy.id)); else selectedProxyIds.delete(String(proxy.id)); updateProxySelection(); };
+    const details = Object.assign(document.createElement("span"), {className: "proxy-details", textContent: `${proxy.label} · ${proxy.scheme}://${proxy.host}:${proxy.port}`});
+    const state = Object.assign(document.createElement("span"), {className: `proxy-state${proxy.enabled ? "" : " disabled"}`, textContent: proxy.enabled ? "enabled" : "disabled"});
+    summary.append(select, details, state);
     const actions = Object.assign(document.createElement("span"), {className: "proxy-actions"});
     const label = Object.assign(document.createElement("input"), {value: proxy.label, ariaLabel: `Label for ${proxy.label}`});
     const raw = Object.assign(document.createElement("input"), {type: "password", placeholder: "Replace proxy (optional)", ariaLabel: `Replacement proxy for ${proxy.label}`, autocomplete: "off"});
@@ -85,9 +92,31 @@ function renderProxies() {
     const toggle = Object.assign(document.createElement("button"), {type: "button", textContent: proxy.enabled ? "Disable" : "Enable"});
     toggle.onclick = () => updateProxy(proxy.id, {enabled: !proxy.enabled});
     const remove = Object.assign(document.createElement("button"), {type: "button", textContent: "Delete"});
-    remove.onclick = async () => { if (confirm(`Delete local proxy “${proxy.label}”?`)) { try { await api(`proxies/${proxy.id}`, {method: "DELETE"}); await loadProxies(); } catch (cause) { setError(cause.message); } } };
-    actions.append(label, raw, save, toggle, remove); row.append(actions); return row;
+    remove.onclick = () => deleteProxies([proxy.id], `Delete local proxy “${proxy.label}”?`);
+    actions.append(label, raw, save, toggle, remove); row.append(summary, actions); return row;
   }));
+  updateProxySelection();
+}
+function updateProxySelection() {
+  const selected = selectedProxyIds.size;
+  const total = data.proxies.length;
+  const selectAll = $("#proxy-select-all");
+  if (!selectAll) return;
+  selectAll.checked = total > 0 && selected === total;
+  selectAll.indeterminate = selected > 0 && selected < total;
+  $("#proxy-selection-count").textContent = `${selected} selected`;
+  $("#delete-selected-proxies").disabled = selected === 0;
+  $("#delete-all-proxies").disabled = total === 0;
+}
+async function deleteProxies(ids, message) {
+  if (!ids.length || !confirm(message)) return;
+  try {
+    const results = await Promise.allSettled(ids.map((id) => api(`proxies/${id}`, {method: "DELETE"})));
+    const failed = results.filter(({status}) => status === "rejected");
+    if (failed.length) setError(`Deleted ${ids.length - failed.length} of ${ids.length} proxies. ${failed[0].reason.message}`);
+    selectedProxyIds.clear();
+    await loadProxies();
+  } catch (cause) { setError(cause.message); }
 }
 function renderRuns(runs) {
   data.activeRun = runs.find(active) || null;
@@ -166,6 +195,12 @@ function initialize() {
   });
   proxyForm.elements.raw_proxy.addEventListener("input", updateProxyCount);
   updateProxyCount();
+  $("#proxy-select-all").addEventListener("change", (event) => {
+    selectedProxyIds = event.target.checked ? new Set(data.proxies.map((proxy) => String(proxy.id))) : new Set();
+    renderProxies();
+  });
+  $("#delete-selected-proxies").addEventListener("click", () => deleteProxies([...selectedProxyIds], `Delete ${selectedProxyIds.size} selected proxies?`));
+  $("#delete-all-proxies").addEventListener("click", () => deleteProxies(data.proxies.map((proxy) => proxy.id), `Delete all ${data.proxies.length} proxies?`));
   settingsForm.addEventListener("submit", async (event) => {
     event.preventDefault(); setError(""); const form = new FormData(settingsForm);
     try {
