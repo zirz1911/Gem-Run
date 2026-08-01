@@ -5,6 +5,16 @@ const runColumns = new Set(["workflow_id", "workflow_name", "profile_mode", "pro
 
 function now() { return new Date().toISOString(); }
 
+function normalizeTimestamp(value) {
+  if (value == null) return null;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    throw new Error("Timestamp must be an ISO string");
+  }
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) throw new Error("Timestamp must be an ISO string");
+  return timestamp.toISOString();
+}
+
 function validHost(host) {
   return host.length <= 253 && host.split(".").every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
 }
@@ -103,7 +113,7 @@ export class RunStore {
       profile_id: input.profile_id ?? null, created_profile_id: input.created_profile_id ?? null, proxy_id: input.proxy_id ?? null,
       cleanup_requested: input.cleanup_requested ? 1 : 0, status: input.status, remote_run_id: input.remote_run_id ?? null,
       error_message: input.error_message ?? null, cleanup_status: input.cleanup_status, created_at: timestamp,
-      started_at: input.started_at ?? null, finished_at: input.finished_at ?? null
+      started_at: normalizeTimestamp(input.started_at), finished_at: normalizeTimestamp(input.finished_at)
     };
     const result = this.db.prepare(`INSERT INTO runs (${Object.keys(values).join(", ")}) VALUES (${Object.keys(values).map((key) => `@${key}`).join(", ")})`).run(values);
     return this.get(result.lastInsertRowid);
@@ -119,7 +129,9 @@ export class RunStore {
   update(id, patch) {
     const entries = Object.entries(patch).filter(([key]) => runColumns.has(key));
     if (!entries.length) return this.get(id);
-    const values = Object.fromEntries(entries.map(([key, value]) => [key, key === "cleanup_requested" ? Number(Boolean(value)) : value]));
+    const values = Object.fromEntries(entries.map(([key, value]) => [key,
+      key === "cleanup_requested" ? Number(Boolean(value)) : ["started_at", "finished_at"].includes(key) ? normalizeTimestamp(value) : value
+    ]));
     values.id = id;
     const statement = entries.map(([key]) => `${key} = @${key}`).join(", ");
     this.db.prepare(`UPDATE runs SET ${statement} WHERE id = @id`).run(values);

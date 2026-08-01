@@ -97,3 +97,15 @@ test("RunStore creates, updates, finds active, and retains proxy references", (t
   proxyStore.remove(proxy.id);
   assert.equal(runStore.get(run.id).proxy_id, proxy.id);
 });
+
+test("RunStore accepts ISO timestamps and rejects non-ISO timestamps", (t) => {
+  const {runStore} = makeStores(t);
+  const input = {workflow_id: "workflow-1", profile_mode: "existing", cleanup_requested: false, status: "queued", cleanup_status: "not_requested"};
+
+  assert.throws(() => runStore.create({...input, started_at: "soon"}), /ISO/);
+  const run = runStore.create({...input, started_at: "2026-08-01T00:00:00.000Z"});
+  assert.equal(run.started_at, "2026-08-01T00:00:00.000Z");
+  assert.throws(() => runStore.update(run.id, {finished_at: "later"}), /ISO/);
+  assert.equal(runStore.get(run.id).finished_at, null);
+  assert.equal(runStore.update(run.id, {finished_at: "2026-08-01T01:00:00.000Z"}).finished_at, "2026-08-01T01:00:00.000Z");
+});
