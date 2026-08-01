@@ -18,6 +18,7 @@ const settingsStore = new SettingsStore(db, proxyEncryptionKey);
 const savedSettings = settingsStore.getAll();
 const gemloginClient = new GemLoginClient({
   baseUrl: config.gemloginBase,
+  cdpBase: config.gemloginCdpBase,
   cloudBase: config.cloudBase,
       cloudDeviceId: savedSettings.cloud_device_id || config.cloudDeviceId,
       cloudSoftId: savedSettings.cloud_soft_id || config.cloudSoftId,

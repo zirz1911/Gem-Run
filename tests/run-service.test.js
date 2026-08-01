@@ -3,15 +3,18 @@ import test from "node:test";
 import {RunService} from "../server/run-service.js";
 import {normalizeRemoteStatus} from "../server/status.js";
 
-function makeContext({remoteStatus = "success", hangStatus = false, hangCreate = false, hangSubmit = false, deleteError, deleteErrors, runTimeoutSeconds = 30} = {}) {
+function makeContext({remoteStatus = "success", remotePayload, hangStatus = false, hangCreate = false, hangSubmit = false, deleteError, deleteErrors, runTimeoutSeconds = 30} = {}) {
   const records = new Map();
   let nextId = 1;
   const calls = [];
   const client = {
     calls,
     async createProfile(details, options = {}) { calls.push({name: "createProfile", details, signal: options.signal}); return hangCreate ? new Promise(() => {}) : {data: {id: 99}}; },
+    async startProfile(profileId, options = {}) { calls.push({name: "startProfile", profileId, signal: options.signal}); },
+    async refreshProfileList(options = {}) { calls.push({name: "refreshProfileList", signal: options.signal}); },
+    async executeLocal(details, options = {}) { calls.push({name: "executeLocal", details, signal: options.signal}); return hangSubmit ? new Promise(() => {}) : {success: true, id: "wf-1"}; },
     async executeCloud(details, options = {}) { calls.push({name: "executeCloud", details, signal: options.signal}); return hangSubmit ? new Promise(() => {}) : {data: {id: "remote-1", status: "submitted"}}; },
-    async checkScriptStatus() { calls.push({name: "checkScriptStatus"}); return hangStatus ? new Promise(() => {}) : {data: {status: remoteStatus}}; },
+    async checkScriptStatus() { calls.push({name: "checkScriptStatus"}); return hangStatus ? new Promise(() => {}) : (remotePayload ?? {data: {status: remoteStatus}}); },
     async closeProfile(profileId) { calls.push({name: "closeProfile", profileId}); },
     async deleteProfile(profileId) { calls.push({name: "deleteProfile", profileId}); const error = deleteErrors?.shift() ?? deleteError; if (error) throw error; }
   };
@@ -42,7 +45,7 @@ test("normalizes supported remote status shapes", () => {
   assert.equal(normalizeRemoteStatus({status: "running"}), "running");
   assert.equal(normalizeRemoteStatus({data: {status: "unknown"}}), "submitted");
   assert.equal(normalizeRemoteStatus({is_running: true, message: "Script is running"}), "running");
-  assert.equal(normalizeRemoteStatus({is_running: false, message: "Script is not running"}), "success");
+  assert.equal(normalizeRemoteStatus({is_running: false, message: "Script is not running"}), "not_running");
   assert.equal(normalizeRemoteStatus({is_running: false, message: "Script failed"}), "failed");
 });
 
@@ -60,8 +63,15 @@ test("new profile selects a proxy, creates, executes, and deletes on success", a
   await ctx.service.start({workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "random", cleanup_requested: true});
   await ctx.drain();
   assert.equal(ctx.proxyStore.picked, 1);
-  assert.deepEqual(ctx.client.calls.map((call) => call.name), ["createProfile", "executeCloud", "checkScriptStatus", "closeProfile", "deleteProfile"]);
+  assert.deepEqual(ctx.client.calls.map((call) => call.name), ["createProfile", "startProfile", "refreshProfileList", "executeLocal", "checkScriptStatus", "closeProfile", "deleteProfile", "refreshProfileList"]);
   assert.equal(ctx.store.get("run-1").status, "done");
+});
+
+test("does not treat an unstarted workflow as success", async () => {
+  const ctx = makeContext({remotePayload: {is_running: false, message: "Script is not running"}, runTimeoutSeconds: 20});
+  await ctx.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_id: 63, cleanup_requested: false});
+  await ctx.drain();
+  assert.equal(ctx.store.get("run-1").error_message, "workflow did not start");
 });
 
 test("new profile deletes after workflow failure", async () => {
@@ -70,7 +80,7 @@ test("new profile deletes after workflow failure", async () => {
   await ctx.drain();
   assert.equal(ctx.store.get("run-1").status, "done");
   assert.equal(ctx.store.get("run-1").error_message, "remote workflow failed");
-  assert.equal(ctx.client.calls.at(-1).name, "deleteProfile");
+  assert.equal(ctx.client.calls.filter((call) => call.name === "deleteProfile").at(-1).name, "deleteProfile");
   assert.deepEqual(ctx.store.updates.filter(({status}) => status).map(({status}) => status), ["submitted", "failed", "done"]);
 });
 
@@ -79,7 +89,7 @@ test("new profile deletes after timeout", async () => {
   await ctx.service.start({workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "none", cleanup_requested: true});
   await ctx.drain();
   assert.equal(ctx.store.get("run-1").error_message, "workflow timed out");
-  assert.equal(ctx.client.calls.at(-1).name, "deleteProfile");
+  assert.equal(ctx.client.calls.filter((call) => call.name === "deleteProfile").at(-1).name, "deleteProfile");
   assert.deepEqual(ctx.store.updates.filter(({status}) => status).map(({status}) => status), ["submitted", "running", "timeout", "done"]);
 });
 
@@ -88,7 +98,7 @@ test("a hung status request reaches its deadline and cleans the created profile"
   await ctx.service.start({workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "none", cleanup_requested: true});
   await ctx.drain();
   assert.equal(ctx.store.get("run-1").error_message, "workflow timed out");
-  assert.deepEqual(ctx.client.calls.map((call) => call.name), ["createProfile", "executeCloud", "checkScriptStatus", "closeProfile", "deleteProfile"]);
+  assert.deepEqual(ctx.client.calls.map((call) => call.name), ["createProfile", "startProfile", "refreshProfileList", "executeLocal", "checkScriptStatus", "closeProfile", "deleteProfile", "refreshProfileList"]);
   assert.deepEqual(ctx.store.updates.filter(({status}) => status).map(({status}) => status), ["submitted", "timeout", "done"]);
 });
 
@@ -139,7 +149,7 @@ test("recovers an active run and cleans its recorded new profile", async () => {
   assert.equal(ctx.store.get("run-1").status, "done");
   assert.equal(ctx.store.get("run-1").error_message, "run interrupted by restart");
   assert.deepEqual(ctx.store.updates.filter(({status}) => status).map(({status}) => status), ["failed", "done"]);
-  assert.deepEqual(ctx.client.calls.map((call) => call.name), ["closeProfile", "deleteProfile"]);
+  assert.deepEqual(ctx.client.calls.map((call) => call.name), ["closeProfile", "deleteProfile", "refreshProfileList"]);
 });
 
 test("recovers a terminal run whose temporary-profile cleanup is still pending", async () => {
@@ -148,5 +158,5 @@ test("recovers a terminal run whose temporary-profile cleanup is still pending",
   await ctx.service.recover();
   assert.equal(ctx.store.get("run-1").status, "done");
   assert.equal(ctx.store.get("run-1").cleanup_status, "done");
-  assert.deepEqual(ctx.client.calls.map((call) => call.name), ["closeProfile", "deleteProfile"]);
+  assert.deepEqual(ctx.client.calls.map((call) => call.name), ["closeProfile", "deleteProfile", "refreshProfileList"]);
 });

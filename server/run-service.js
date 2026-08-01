@@ -117,16 +117,26 @@ export class RunService {
         currentProfileId = profileId(created);
         if (currentProfileId == null) throw new Error("profile creation failed");
         run = this.runStore.update(runId, {created_profile_id: String(currentProfileId)});
+        await this.runWithDeadline(deadline, (signal) => this.gemloginClient.startProfile(currentProfileId, {signal}));
+        await this.runWithDeadline(deadline, (signal) => this.gemloginClient.refreshProfileList({signal}));
       }
-      const submitted = await this.runWithDeadline(deadline, (signal) => this.gemloginClient.executeCloud({
+      const execute = run.profile_mode === "new" ? this.gemloginClient.executeLocal.bind(this.gemloginClient) : this.gemloginClient.executeCloud.bind(this.gemloginClient);
+      const submitted = await this.runWithDeadline(deadline, (signal) => execute({
         profileId: currentProfileId, workflowId: run.workflow_id, parameter: input.parameter ?? {},
         closeBrowser: run.profile_mode === "new" && run.cleanup_requested
       }, {signal}));
-      run = this.runStore.update(runId, {status: "submitted", remote_run_id: remoteRunId(submitted)});
+      run = this.runStore.update(runId, {status: "submitted", remote_run_id: run.profile_mode === "new" ? null : remoteRunId(submitted)});
+      let observedRunning = false;
+      const startupDeadline = Math.min(deadline, new Date(timestamp(this.clock)).getTime() + 15000);
       while (true) {
         const status = await this.pollStatus(run.workflow_id, currentProfileId, deadline);
+        if (status === "running") observedRunning = true;
         if (status === "success") return this.finish(runId, "success", null, deadline);
         if (status === "failed") return this.finish(runId, "failed", "remote workflow failed", deadline);
+        if (status === "not_running" && observedRunning) return this.finish(runId, "success", null, deadline);
+        if (status === "not_running" && new Date(timestamp(this.clock)).getTime() >= startupDeadline) {
+          return this.finish(runId, "failed", "workflow did not start", deadline);
+        }
         if (status === "timeout" || new Date(timestamp(this.clock)).getTime() >= deadline) return this.finish(runId, "timeout", "workflow timed out", deadline);
         run = this.runStore.update(runId, {status: "running"});
         await this.sleep(pollIntervalMs);
@@ -150,11 +160,13 @@ export class RunService {
   async cleanup(run, deadline) {
     if (!run.cleanup_requested || !run.created_profile_id) return run.cleanup_status === "pending" ? "failed" : run.cleanup_status;
     let failed = false;
+    let deleted = false;
     try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.closeProfile(run.created_profile_id, {signal})); } catch { failed = true; }
-    try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.deleteProfile(run.created_profile_id, {signal})); }
+    try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.deleteProfile(run.created_profile_id, {signal})); deleted = true; }
     catch {
-      try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.deleteProfile(run.created_profile_id, {signal})); } catch { failed = true; }
+      try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.deleteProfile(run.created_profile_id, {signal})); deleted = true; } catch { failed = true; }
     }
+    if (deleted) try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.refreshProfileList({signal})); } catch {}
     return failed ? "failed" : "done";
   }
 

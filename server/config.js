@@ -5,6 +5,7 @@ export function loadConfig(env) {
   }
   return {
     gemloginBase: env.GEMLOGIN_BASE || "http://host.docker.internal:1010",
+    gemloginCdpBase: env.GEMLOGIN_CDP_BASE || "",
     cloudBase: env.GEMLOGIN_CLOUD_BASE || "https://app.gemlogin.io",
     cloudDeviceId: env.GEMLOGIN_CLOUD_DEVICE_ID || "",
     cloudSoftId: env.GEMLOGIN_CLOUD_SOFT_ID || "",

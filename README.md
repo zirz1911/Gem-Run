@@ -1,29 +1,148 @@
 # Gem-Run
 
-Gem-Run runs GemLogin workflows from the same machine that runs GemLogin. The dashboard is deliberately published only on `127.0.0.1:3200`.
+Gem-Run is a local Docker dashboard for running GemLogin workflows. It can run an existing profile or create a temporary profile with no proxy, a manually entered proxy, or a randomly selected proxy from the saved proxy pool.
 
-## Run with Docker
+## Requirements
 
-Prerequisites: Docker with Docker Compose, and GemLogin running on the host with its local API available on port `1010`.
+- Docker Desktop with Docker Compose
+- GemLogin installed and running on the same machine
+- GemLogin Local API available at port `1010`
+- Node.js 22+ only when running the CDP bridge or tests outside Docker
 
-Start the app; it generates the local encryption key inside the named Docker volume on first run:
+The dashboard is bound to `127.0.0.1:3200` by default. It is intentionally local-only because this release has no user authentication.
+
+## Quick start
+
+1. Start GemLogin and make sure its Local API is available.
+2. Configure the local environment file. `.env` is ignored by Git and must never be committed.
+
+```dotenv
+GEMLOGIN_BASE=http://host.docker.internal:1010
+GEMLOGIN_CDP_BASE=http://host.docker.internal:9223
+GEMLOGIN_CLOUD_BASE=https://app.gemlogin.io
+GEMLOGIN_CLOUD_DEVICE_ID=
+GEMLOGIN_CLOUD_SOFT_ID=1
+GEMLOGIN_CLOUD_TOKEN=
+PROXY_ENCRYPTION_KEY=
+RUN_TIMEOUT_SECONDS=300
+```
+
+3. Build and start Gem-Run:
 
 ```sh
 docker compose up -d --build
 ```
 
-Open `http://127.0.0.1:3200`, open **Settings**, and enter the GemLogin cloud values. They are encrypted in the local database and are never returned to the browser.
+4. Open <http://127.0.0.1:3200>.
+5. Open **Settings** and save the GemLogin cloud values if existing-profile runs will use the cloud webhook.
 
-Start the app and verify it:
+Check the installation:
 
 ```sh
 curl -sSf http://127.0.0.1:3200/api/health
 sh tests/docker-smoke.sh
+```
+
+## GemLogin profile refresh bridge
+
+GemLogin's REST API creates and deletes profiles in its database, but its Electron profile list keeps an in-memory store. New profiles and deleted profiles are not visible to the workflow runner until GemLogin's **Refresh profile list** action is triggered.
+
+For new-profile runs, Gem-Run triggers that action automatically through the GemLogin renderer using Chrome DevTools Protocol (CDP). GemLogin must be started with a DevTools port, and the included bridge makes that loopback port reachable from Docker.
+
+Start GemLogin with:
+
+```text
+--remote-debugging-port=9222
+```
+
+Then run the bridge in a host terminal:
+
+```sh
+GEMLOGIN_CDP_BRIDGE_HOST=0.0.0.0 node scripts/gemlogin-cdp-bridge.mjs
+```
+
+Finally start Docker with `GEMLOGIN_CDP_BASE=http://host.docker.internal:9223` in `.env`. The bridge has no authentication; run it only on a trusted machine and do not expose port `9223` to the public internet.
+
+The bridge ports can be changed per machine:
+
+```sh
+GEMLOGIN_CDP_REMOTE_PORT=9222 \
+GEMLOGIN_CDP_BRIDGE_PORT=9223 \
+GEMLOGIN_CDP_BRIDGE_HOST=0.0.0.0 \
+node scripts/gemlogin-cdp-bridge.mjs
+```
+
+## Using the dashboard
+
+### Existing profile
+
+Select an existing profile and a workflow, then run it. The existing-profile path uses the configured GemLogin cloud webhook.
+
+### New profile
+
+Select **New profile**, enter a name and group, then choose:
+
+- **None**: no proxy
+- **Manual**: one proxy value
+- **Random**: one enabled proxy from the saved proxy pool
+
+The run sequence is:
+
+```text
+create profile -> open profile -> refresh GemLogin list -> execute workflow -> poll status
+```
+
+Enable cleanup to close and delete the temporary profile after the workflow finishes. Gem-Run also refreshes the GemLogin profile list after deletion, so the deleted profile disappears without a manual refresh.
+
+### Proxy formats
+
+The proxy editor accepts one value per line. Blank lines are ignored, and `http://` is optional.
+
+```text
+147.15.196.136:30955:CC:TOOD
+http://147.15.196.136:30956:CC:TOOD
+```
+
+Proxy credentials are encrypted in the local SQLite database and masked in API responses and the UI.
+
+## Data and lifecycle
+
+- SQLite data is stored in the `gem-run-data` Docker volume.
+- `docker compose down` keeps the volume.
+- `docker compose down -v` deletes local Gem-Run data and should only be used intentionally.
+- `.env`, database files, proxy encryption keys, and session data must stay local.
+
+Stop the container:
+
+```sh
 docker compose down
 ```
 
-The `gem-run-data` named volume retains the SQLite database when containers are recreated; `docker compose down` does not remove it. Use `docker compose down -v` only when intentionally deleting local Gem-Run data.
+## Development
 
-## Security boundary
+Run the test suite and syntax checks:
 
-No authentication is included because this release is restricted to localhost. Do not change the `127.0.0.1:3200:3200` mapping to a non-loopback address until authentication and its associated security review are implemented.
+```sh
+npm test
+npm run check
+git diff --check
+```
+
+The project uses Node's built-in test runner, Express, and better-sqlite3. No external database or cloud service is required for the local dashboard.
+
+## API overview
+
+Gem-Run exposes its local dashboard API on port `3200`:
+
+- `GET /api/health` — service and GemLogin health
+- `GET /api/gemlogin/profiles` — profiles from GemLogin
+- `GET /api/gemlogin/groups` — profile groups from GemLogin
+- `GET /api/gemlogin/workflows` — workflows from GemLogin
+- `GET /api/proxies` — saved proxy pool
+- `POST /api/proxies` — add a proxy
+- `POST /api/runs` — queue a workflow run
+- `GET /api/runs` — run history
+- `GET /api/settings` — configured setting flags
+- `PATCH /api/settings` — save encrypted cloud settings
+
+GemLogin remains the source of truth for profiles and workflows. Gem-Run stores only its run history, proxy pool, and encrypted local settings.

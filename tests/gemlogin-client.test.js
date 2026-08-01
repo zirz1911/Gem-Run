@@ -35,6 +35,7 @@ test("local methods use the documented methods, paths, and encoded IDs", async (
   await client.listGroups();
   await client.listWorkflows();
   await client.createProfile({name: "Temp"});
+  await client.executeLocal({profileId: "a/b", workflowId: "workflow/a", parameter: {}, closeBrowser: false});
   await client.startProfile("a/b");
   await client.closeProfile("a/b");
   await client.deleteProfile("a/b");
@@ -48,6 +49,7 @@ test("local methods use the documented methods, paths, and encoded IDs", async (
     ["http://local.example/api/groups", "GET", undefined],
     ["http://local.example/api/scripts", "GET", undefined],
     ["http://local.example/api/profiles/create", "POST", '{"name":"Temp"}'],
+    ["http://local.example/api/scripts/execute/workflow%2Fa", "POST", '{"profileId":["a/b"],"parameters":{},"closeBrowser":false}'],
     ["http://local.example/api/profiles/start/a%2Fb", "GET", undefined],
     ["http://local.example/api/profiles/close/a%2Fb", "GET", undefined],
     ["http://local.example/api/profiles/delete/a%2Fb", "GET", undefined],
@@ -82,6 +84,11 @@ test("executeCloud sends the GemLogin webhook shape without returning its token"
   assert.equal(JSON.stringify(result).includes("secret"), false);
 });
 
+test("executeCloud rejects a cloud response whose nested result failed", async () => {
+  const {client} = makeClient({success: true, message: "Execute successfully", data: JSON.stringify({success: false, message: "Script not found"})});
+  await assert.rejects(client.executeCloud({profileId: 63, workflowId: "missing", parameter: {}, closeBrowser: false}), /Script not found/);
+});
+
 test("profiles and workflow defaults are returned without credentials", async () => {
   const responses = [
     {data: [{id: "1", proxy: "http://alice:password@proxy.example:8000", username: "alice", password: "password"}]},
@@ -109,6 +116,51 @@ test("listProfiles masks colon-delimited proxy credentials", async () => {
 
   const profiles = await client.listProfiles();
   assert.equal(profiles.data[0].proxy, "http://proxy.example:8000:***:***");
+});
+
+test("listProfiles follows GemLogin pages beyond the first 50 profiles", async () => {
+  const calls = [];
+  const client = new GemLoginClient({
+    baseUrl: "http://local.example",
+    fetchImpl: async (url) => {
+      calls.push(url);
+      const page = new URL(url).searchParams.get("page");
+      return jsonResponse({data: page === "2" ? [{id: "70"}] : Array.from({length: 50}, (_, index) => ({id: String(index + 1)}))});
+    }
+  });
+  const profiles = await client.listProfiles();
+  assert.equal(profiles.data.length, 51);
+  assert.equal(profiles.data.at(-1).id, "70");
+  assert.deepEqual(calls, ["http://local.example/api/profiles", "http://local.example/api/profiles?page=2"]);
+});
+
+test("refreshProfileList clicks GemLogin's real profile refresh control", async () => {
+  const messages = [];
+  class FakeWebSocket {
+    constructor(url) { this.url = url; this.listeners = {}; }
+    addEventListener(name, listener) {
+      this.listeners[name] = listener;
+      if (name === "open") queueMicrotask(listener);
+    }
+    send(message) {
+      messages.push(JSON.parse(message));
+      queueMicrotask(() => this.listeners.message({data: JSON.stringify({id: 1, result: {result: {value: true}}})}));
+    }
+    close() {}
+  }
+  const client = new GemLoginClient({
+    baseUrl: "http://local.example",
+    cdpBase: "http://host.example:9223",
+    fetchImpl: async (url) => url.endsWith("/json/list")
+      ? jsonResponse([{type: "page", url: "http://localhost:1010/#/profiles", webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/page/abc"}])
+      : jsonResponse({success: true}),
+    webSocketImpl: FakeWebSocket
+  });
+
+  await client.refreshProfileList();
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].method, "Runtime.evaluate");
+  assert.match(messages[0].params.expression, /Refresh profile list button not found/);
 });
 
 test("configured cloud tokens are redacted from arbitrary response fields", async () => {

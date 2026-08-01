@@ -16,14 +16,16 @@ function sanitize(value, secrets = [], sensitive = false) {
 }
 
 export class GemLoginClient {
-  constructor({baseUrl, cloudBase, cloudDeviceId, cloudSoftId, cloudToken, fetchImpl = fetch}) {
+  constructor({baseUrl, cdpBase = "", cloudBase, cloudDeviceId, cloudSoftId, cloudToken, fetchImpl = fetch, webSocketImpl = WebSocket}) {
     this.baseUrl = baseUrl?.replace(/\/$/, "");
+    this.cdpBase = cdpBase?.replace(/\/$/, "");
     this.cloudBase = cloudBase?.replace(/\/$/, "");
     this.cloudDeviceId = cloudDeviceId;
     this.cloudSoftId = cloudSoftId;
     this.cloudToken = cloudToken;
     this.secrets = [cloudToken].filter(Boolean);
     this.fetchImpl = fetchImpl;
+    this.webSocketImpl = webSocketImpl;
   }
 
   configureCloud({cloudDeviceId, cloudSoftId, cloudToken}) {
@@ -58,7 +60,17 @@ export class GemLoginClient {
   }
 
   status(options) { return this.local("/api/status", options); }
-  listProfiles(options) { return this.local("/api/profiles", options); }
+  async listProfiles(options) {
+    const first = await this.local("/api/profiles", options);
+    if (!Array.isArray(first?.data) || first.data.length < 50) return first;
+    const profiles = [...first.data];
+    for (let page = 2; ; page += 1) {
+      const next = await this.local(`/api/profiles?page=${page}`, options);
+      const pageProfiles = Array.isArray(next?.data) ? next.data : [];
+      profiles.push(...pageProfiles);
+      if (pageProfiles.length < 50) return {...first, data: profiles};
+    }
+  }
   getProfile(profileId, options) { return this.local(`/api/profile/${encodeURIComponent(profileId)}`, options); }
   listGroups(options) { return this.local("/api/groups", options); }
   listWorkflows(options) { return this.local("/api/scripts", options); }
@@ -69,6 +81,54 @@ export class GemLoginClient {
   checkProfileStatus(profileId, options = {}) { return this.local(`/api/profiles/check-status/${encodeURIComponent(profileId)}`, {method: "POST", ...options}); }
   checkScriptStatus(scriptId, profileId, options = {}) {
     return this.local(`/api/scripts/check-status/${encodeURIComponent(scriptId)}`, {method: "POST", body: {profileId: String(profileId)}, ...options});
+  }
+
+  async refreshProfileList({signal} = {}) {
+    if (!this.cdpBase) throw new Error("GemLogin profile refresh is not configured");
+    const targets = await this.request(this.cdpBase, "/json/list", {signal});
+    const target = targets.find((item) => item.type === "page" && item.url?.includes("#/profiles"));
+    if (!target?.webSocketDebuggerUrl) throw new Error("GemLogin profile page is not available");
+    const cdp = new URL(this.cdpBase);
+    const targetUrl = new URL(target.webSocketDebuggerUrl);
+    const webSocketUrl = `${cdp.protocol === "https:" ? "wss" : "ws"}://${cdp.host}${targetUrl.pathname}`;
+    await new Promise((resolve, reject) => {
+      const socket = new this.webSocketImpl(webSocketUrl);
+      let settled = false;
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        signal?.removeEventListener("abort", abort);
+        try { socket.close(); } catch {}
+        error ? reject(error) : resolve();
+      };
+      const abort = () => finish(new Error("GemLogin profile refresh aborted"));
+      const timeout = setTimeout(() => finish(new Error("GemLogin profile refresh timed out")), 10000);
+      signal?.addEventListener("abort", abort, {once: true});
+      socket.addEventListener("open", () => socket.send(JSON.stringify({
+        id: 1,
+        method: "Runtime.evaluate",
+        params: {
+          awaitPromise: true,
+          returnByValue: true,
+          expression: `(async()=>{const b=[...document.querySelectorAll('button.el-button.is-plain.is-circle')].find(b=>b.querySelector('path')?.getAttribute('d')?.startsWith('M2 12'));if(!b)throw new Error('Refresh profile list button not found');b.click();await new Promise(r=>setTimeout(r,1000));return true})()`
+        }
+      })));
+      socket.addEventListener("message", (event) => {
+        let message;
+        try { message = JSON.parse(event.data); } catch { return finish(new Error("GemLogin profile refresh returned invalid data")); }
+        if (message.id !== 1) return;
+        if (message.result?.exceptionDetails) return finish(new Error("GemLogin profile refresh failed"));
+        finish(message.error ? new Error("GemLogin profile refresh failed") : null);
+      });
+      socket.addEventListener("error", () => finish(new Error("GemLogin profile refresh connection failed")));
+    });
+  }
+
+  executeLocal({profileId, workflowId, parameter, closeBrowser}, options = {}) {
+    return this.local(`/api/scripts/execute/${encodeURIComponent(workflowId)}`, {
+      method: "POST", body: {profileId: [String(profileId)], parameters: parameter ?? {}, closeBrowser}, ...options
+    });
   }
 
   executeCloud({profileId, workflowId, parameter, closeBrowser}, options = {}) {
@@ -84,6 +144,13 @@ export class GemLoginClient {
         token: this.cloudToken
       },
       ...options
+    }).then((result) => {
+      if (result?.success === false) throw new Error(`GemLogin workflow rejected: ${result.message || "unknown error"}`);
+      if (typeof result?.data !== "string") return result;
+      let nested;
+      try { nested = JSON.parse(result.data); } catch { return result; }
+      if (nested?.success === false) throw new Error(`GemLogin workflow rejected: ${nested.message || "unknown error"}`);
+      return {...result, data: nested};
     });
   }
 }

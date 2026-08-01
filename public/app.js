@@ -103,6 +103,10 @@ async function loadRuns() {
   try { renderRuns(await api("runs")); }
   catch { setError("Run history could not be loaded."); }
 }
+async function loadProfiles() {
+  try { data.profiles = await api("gemlogin/profiles"); option($("#profile"), data.profiles, "Choose a profile"); renderProfiles(); }
+  catch { setError("Profiles could not be loaded."); }
+}
 async function optionalLoad(path, fallback) {
   try { return await api(path); }
   catch { setError("Some dashboard data could not be loaded."); return fallback; }
@@ -124,7 +128,11 @@ async function updateProxy(id, payload, raw) {
 function poll(id) {
   clearTimeout(poller);
   poller = setTimeout(async () => {
-    try { const run = await api(`runs/${id}`); if (active(run)) poll(id); else await loadRuns(); }
+    try {
+      const run = await api(`runs/${id}`);
+      if (run.created_profile_id && !data.profiles.some((profile) => String(profile.id) === String(run.created_profile_id))) await loadProfiles();
+      if (active(run)) poll(id); else await Promise.all([loadRuns(), loadProfiles()]);
+    }
     catch (cause) { setError(cause.message); poll(id); }
   }, 2000);
 }

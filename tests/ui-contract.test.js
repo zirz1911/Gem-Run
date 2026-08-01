@@ -30,4 +30,6 @@ test("dashboard contracts retry a failed run poll and load history independently
   const script = await readFile(new URL("public/app.js", root), "utf8");
   assert.match(script, /catch \(cause\) \{ setError\(cause\.message\); poll\(id\); \}/);
   assert.match(script, /await loadRuns\(\);/);
+  assert.match(script, /async function loadProfiles\(\)/);
+  assert.match(script, /await Promise\.all\(\[loadRuns\(\), loadProfiles\(\)\]\)/);
 });
