@@ -105,6 +105,8 @@ legend { padding: 0; }
 #parameters label:first-of-type { margin-top: 4px; }
 #parameters label input, #parameters label select { margin-top: 0; }
 #parameters p { margin: 0; color: var(--muted); font-size: .84rem; }
+.parameter-divider { margin: 18px 0 4px; border: 0; border-top: 1px solid var(--line); }
+.parameter-label { margin-top: 16px !important; color: var(--ink) !important; font-weight: 700; }
 .form-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
 .form-note { margin: 0; font-size: .64rem; letter-spacing: .06em; }
 .accent-mark { color: var(--accent); }

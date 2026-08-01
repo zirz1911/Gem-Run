@@ -15,6 +15,12 @@ export function serializeParameters(controls) {
 export function parseProxyLines(value) {
   return String(value ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
+export function parameterControlType(parameter) {
+  if (["divider", "label", "inline"].includes(parameter.type)) return null;
+  if (Array.isArray(parameter.options)) return "select";
+  if (parameter.type === "checkbox" || parameter.type === "boolean") return "checkbox";
+  return parameter.type === "number" ? "number" : "text";
+}
 
 async function api(path, options) {
   const response = await fetch(`/api/${path}`, options);
@@ -64,23 +70,33 @@ function syncRunForm() {
 function renderParameters() {
   const workflow = data.workflows.find((item) => String(item.id) === $("#workflow").value);
   const fields = (workflow?.parameters || []).map((parameter) => {
+    const controlType = parameterControlType(parameter);
+    if (!controlType) {
+      if (parameter.type === "divider") return Object.assign(document.createElement("hr"), {className: "parameter-divider"});
+      if (parameter.description) return Object.assign(document.createElement("p"), {className: "parameter-label", textContent: parameter.description});
+      return null;
+    }
     const label = document.createElement("label");
     label.append(`${parameter.name}${parameter.required ? " (required)" : ""}`);
-    const control = parameter.type === "boolean" ? document.createElement("input") : document.createElement(parameter.options ? "select" : "input");
+    const control = document.createElement(controlType === "select" ? "select" : "input");
     control.name = `parameter.${parameter.name}`;
     control.required = Boolean(parameter.required);
-    if (parameter.type === "boolean") {
+    if (controlType === "checkbox") {
       control.type = "checkbox";
-      control.checked = control.defaultChecked = parameter.default === true;
+      control.checked = control.defaultChecked = parameter.default === true || parameter.default === "true";
     } else {
-      if (parameter.options) control.append(...parameter.options.map((value) => new Option(value, value)));
-      else control.type = parameter.type === "number" ? "number" : "text";
+      if (controlType === "select") control.append(...parameter.options.map((value) => new Option(value, value)));
+      else control.type = controlType;
+      if (parameter.type === "filepath") {
+        control.placeholder = "/path/to/file.txt";
+        control.autocomplete = "off";
+      }
       if (parameter.default !== undefined && parameter.default !== "***") control.value = parameter.default;
     }
     if (parameter.description) label.append(document.createTextNode(` — ${parameter.description}`));
     label.append(control);
     return label;
-  });
+  }).filter(Boolean);
   $("#parameters").replaceChildren(Object.assign(document.createElement("legend"), {textContent: "Workflow parameters"}), ...(fields.length ? fields : [Object.assign(document.createElement("p"), {textContent: "No parameters."})]));
 }
 function renderProfiles() {

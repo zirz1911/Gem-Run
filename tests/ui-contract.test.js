@@ -37,6 +37,16 @@ test("workflow form serialization preserves checked and unchecked booleans", asy
   assert.deepEqual(parseProxyLines(" http://one:1:u:p \n\nhttp://two:2:u:p\r\n"), ["http://one:1:u:p", "http://two:2:u:p"]);
 });
 
+test("maps GemLogin parameter types to matching controls", async () => {
+  const {parameterControlType} = await import(`../public/app.js?parameter-types=${Date.now()}`);
+  assert.equal(parameterControlType({type: "checkbox"}), "checkbox");
+  assert.equal(parameterControlType({type: "filepath"}), "text");
+  assert.equal(parameterControlType({type: "number"}), "number");
+  assert.equal(parameterControlType({type: "divider"}), null);
+  assert.equal(parameterControlType({type: "label"}), null);
+  assert.equal(parameterControlType({type: "string", options: ["a", "b"]}), "select");
+});
+
 test("summarizes active batch progress", async () => {
   const {summarizeBatchProgress} = await import(`../public/app.js?progress-contract=${Date.now()}`);
   assert.deepEqual(summarizeBatchProgress([
