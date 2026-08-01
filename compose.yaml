@@ -4,7 +4,13 @@ services:
     ports:
       - "127.0.0.1:3200:3200"
     environment:
-      GEMLOGIN_BASE: http://host.docker.internal:1010
+      GEMLOGIN_BASE: ${GEMLOGIN_BASE:-http://host.docker.internal:1010}
+      GEMLOGIN_CLOUD_BASE: ${GEMLOGIN_CLOUD_BASE:-https://app.gemlogin.io}
+      GEMLOGIN_CLOUD_DEVICE_ID: ${GEMLOGIN_CLOUD_DEVICE_ID:-}
+      GEMLOGIN_CLOUD_SOFT_ID: ${GEMLOGIN_CLOUD_SOFT_ID:-}
+      GEMLOGIN_CLOUD_TOKEN: ${GEMLOGIN_CLOUD_TOKEN:-}
+      PROXY_ENCRYPTION_KEY: ${PROXY_ENCRYPTION_KEY:?Set PROXY_ENCRYPTION_KEY in .env to a base64-encoded 32-byte key}
+      RUN_TIMEOUT_SECONDS: ${RUN_TIMEOUT_SECONDS:-300}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
