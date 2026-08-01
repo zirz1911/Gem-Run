@@ -58,6 +58,8 @@ test("ProxyStore persists encrypted credentials and exposes only masked fields",
 
   proxyStore.setEnabled(created.id, false);
   assert.equal(proxyStore.list()[0].enabled, false);
+  assert.equal(proxyStore.setLabel(created.id, "Renamed"), true);
+  assert.equal(proxyStore.list()[0].label, "Renamed");
   proxyStore.replaceCredentials(created.id, "socks5://other.example:1080:bob:changed");
   const replaced = proxyStore.get(created.id);
   assert.equal(replaced.scheme, "socks5");

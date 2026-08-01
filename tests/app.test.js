@@ -15,7 +15,7 @@ test("health reports the app and GemLogin status", async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-test("health uses the configured GemLogin client", async () => {
+test("health reports configured GemLogin availability without forwarding its response", async () => {
   const app = createApp({
     config,
     gemloginClient: {status: async () => ({version: "1.0"})},
@@ -25,7 +25,7 @@ test("health uses the configured GemLogin client", async () => {
   const server = app.listen(0);
   const {port} = server.address();
   const response = await fetch(`http://127.0.0.1:${port}/api/health`);
-  assert.deepEqual((await response.json()).gemlogin, {version: "1.0"});
+  assert.deepEqual(await response.json(), {app: "ok", gemlogin: "available"});
   await new Promise((resolve) => server.close(resolve));
 });
 

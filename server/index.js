@@ -20,12 +20,14 @@ const gemloginClient = new GemLoginClient({
   cloudSoftId: config.cloudSoftId,
   cloudToken: config.cloudToken
 });
+const proxyStore = new ProxyStore(db, proxyEncryptionKey);
+const runStore = new RunStore(db);
 const runService = new RunService({
-  gemloginClient, proxyStore: new ProxyStore(db, proxyEncryptionKey), runStore: new RunStore(db),
+  gemloginClient, proxyStore, runStore,
   runTimeoutSeconds: config.runTimeoutSeconds
 });
 void runService.recover().catch(() => console.error("Gem-Run recovery failed"));
-const app = createApp({config, gemloginClient, db, runService});
+const app = createApp({config, gemloginClient, proxyStore, runStore, runService});
 
 app.listen(config.port, "0.0.0.0", () => {
   console.log(`Gem-Run listening on ${config.port}`);

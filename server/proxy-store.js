@@ -78,6 +78,12 @@ export class ProxyStore {
     return this.db.prepare("UPDATE proxies SET enabled = ?, updated_at = ? WHERE id = ?").run(enabled ? 1 : 0, now(), id).changes > 0;
   }
 
+  setLabel(id, label) {
+    const value = String(label || "").trim();
+    if (!value) throw new Error("Proxy label is required");
+    return this.db.prepare("UPDATE proxies SET label = ?, updated_at = ? WHERE id = ?").run(value, now(), id).changes > 0;
+  }
+
   replaceCredentials(id, rawProxy) {
     const proxy = parseProxy(rawProxy);
     const encrypted = proxy.username === null ? null : encryptSecret(JSON.stringify({username: proxy.username, password: proxy.password}), this.key);
