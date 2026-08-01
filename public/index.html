@@ -8,8 +8,57 @@
   </head>
   <body>
     <main>
-      <h1>Gem-Run</h1>
-      <p id="status">Checking service status…</p>
+      <header>
+        <h1>Gem-Run</h1>
+        <p id="status" role="status" aria-live="polite">Loading dashboard…</p>
+        <p id="error" role="alert" hidden></p>
+      </header>
+
+      <section aria-labelledby="run-heading">
+        <h2 id="run-heading">Run Workflow</h2>
+        <form id="run-form">
+          <label>Workflow <select id="workflow" name="workflow_id" required></select></label>
+          <fieldset><legend>Profile</legend>
+            <label><input type="radio" name="profile_mode" value="existing" checked> Existing profile</label>
+            <label><input type="radio" name="profile_mode" value="new"> New profile</label>
+          </fieldset>
+          <div id="existing-profile"><label>Profile <select id="profile" name="profile_id"></select></label></div>
+          <div id="new-profile" hidden>
+            <label>Profile name <input name="profile_name" autocomplete="off"></label>
+            <label>Group <select id="group" name="group_id"></select></label>
+            <fieldset><legend>Proxy mode</legend>
+              <label><input type="radio" name="proxy_mode" value="none" checked> No proxy</label>
+              <label><input type="radio" name="proxy_mode" value="manual"> One-time proxy</label>
+              <label><input type="radio" name="proxy_mode" value="random"> Random active proxy</label>
+            </fieldset>
+            <label id="manual-proxy" hidden>One-time proxy <input name="raw_proxy" type="password" autocomplete="off" spellcheck="false"></label>
+            <label><input name="cleanup_requested" type="checkbox"> Close and delete this new profile after the run</label>
+          </div>
+          <fieldset id="parameters"><legend>Workflow parameters</legend><p>Select a workflow.</p></fieldset>
+          <button id="run-submit" type="submit">Run workflow</button>
+        </form>
+      </section>
+
+      <section aria-labelledby="profiles-heading">
+        <h2 id="profiles-heading">Profiles</h2>
+        <ul id="profiles" aria-live="polite"></ul>
+      </section>
+
+      <section aria-labelledby="proxies-heading">
+        <h2 id="proxies-heading">Proxy Pool</h2>
+        <form id="proxy-form">
+          <label>Label <input name="label" required autocomplete="off"></label>
+          <label>Proxy <input name="raw_proxy" type="password" required autocomplete="off" spellcheck="false"></label>
+          <label><input name="enabled" type="checkbox" checked> Enabled</label>
+          <button type="submit">Save proxy</button>
+        </form>
+        <ul id="proxies" aria-live="polite"></ul>
+      </section>
+
+      <section aria-labelledby="history-heading">
+        <h2 id="history-heading">Run History</h2>
+        <ol id="runs" aria-live="polite"></ol>
+      </section>
     </main>
     <script type="module" src="/app.js"></script>
   </body>
