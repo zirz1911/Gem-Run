@@ -3,62 +3,95 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Local GemLogin workflow control desk for profiles, proxies, and run history.">
     <title>Gem-Run</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <main>
-      <header>
-        <h1>Gem-Run</h1>
-        <p id="status" role="status" aria-live="polite">Loading dashboard…</p>
-        <p id="error" role="alert" hidden></p>
+      <header class="masthead">
+        <div class="brand-block">
+          <p class="eyebrow">LOCAL AUTOMATION / GEMLOGIN</p>
+          <h1>Gem<span>·</span>Run</h1>
+          <p class="lede">A precise control desk for profiles, proxies, and workflow runs.</p>
+        </div>
+        <div class="service-block">
+          <span class="section-label">SERVICE STATUS</span>
+          <p id="status" class="status-line" role="status" aria-live="polite">Loading dashboard…</p>
+          <p id="error" class="error-line" role="alert" hidden></p>
+        </div>
       </header>
 
-      <section aria-labelledby="run-heading">
-        <h2 id="run-heading">Run Workflow</h2>
-        <form id="run-form">
-          <label>Workflow <select id="workflow" name="workflow_id" required></select></label>
-          <fieldset><legend>Profile</legend>
-            <label><input type="radio" name="profile_mode" value="existing" checked> Existing profile</label>
-            <label><input type="radio" name="profile_mode" value="new"> New profile</label>
-          </fieldset>
-          <div id="existing-profile"><label>Profile <select id="profile" name="profile_id"></select></label></div>
-          <div id="new-profile" hidden>
-            <label>Profile name <input name="profile_name" autocomplete="off"></label>
-            <label>Group <select id="group" name="group_id"></select></label>
-            <fieldset><legend>Proxy mode</legend>
-              <label><input type="radio" name="proxy_mode" value="none" checked> No proxy</label>
-              <label><input type="radio" name="proxy_mode" value="manual"> One-time proxy</label>
-              <label><input type="radio" name="proxy_mode" value="random"> Random active proxy</label>
-            </fieldset>
-            <label id="manual-proxy" hidden>One-time proxy <input name="raw_proxy" type="password" autocomplete="off" spellcheck="false"></label>
-            <label><input name="cleanup_requested" type="checkbox"> Close and delete this new profile after the run</label>
+      <div class="dashboard-grid">
+        <section class="panel run-panel" aria-labelledby="run-heading">
+          <div class="panel-heading">
+            <div><p class="eyebrow">01 / EXECUTE</p><h2 id="run-heading">Run Workflow</h2></div>
+            <span class="panel-code">POST /runs</span>
           </div>
-          <fieldset id="parameters"><legend>Workflow parameters</legend><p>Select a workflow.</p></fieldset>
-          <button id="run-submit" type="submit">Run workflow</button>
-        </form>
-      </section>
+          <p class="section-intro">Choose the workflow and the browser identity that should carry it.</p>
+          <form id="run-form">
+            <div class="form-grid form-grid-primary">
+              <label class="field field-wide"><span>Workflow</span><select id="workflow" name="workflow_id" required></select></label>
+              <div id="existing-profile"><label class="field"><span>Existing profile</span><select id="profile" name="profile_id"></select></label></div>
+            </div>
+            <fieldset class="choice-fieldset"><legend>Profile mode</legend>
+              <div class="choice-grid">
+                <label class="choice-card"><input type="radio" name="profile_mode" value="existing" checked><span><strong>Use existing</strong><small>Keep the profile and its history.</small></span></label>
+                <label class="choice-card"><input type="radio" name="profile_mode" value="new"><span><strong>Create new</strong><small>Provision, run, then optionally clean up.</small></span></label>
+              </div>
+            </fieldset>
+            <div id="new-profile" class="new-profile-fields" hidden>
+              <div class="form-grid">
+                <label class="field"><span>Profile name</span><input name="profile_name" autocomplete="off"></label>
+                <label class="field"><span>Group</span><select id="group" name="group_id"></select></label>
+              </div>
+              <fieldset class="choice-fieldset"><legend>Proxy strategy</legend>
+                <div class="choice-grid choice-grid-three">
+                  <label class="choice-card"><input type="radio" name="proxy_mode" value="none" checked><span><strong>No proxy</strong><small>Direct connection.</small></span></label>
+                  <label class="choice-card"><input type="radio" name="proxy_mode" value="manual"><span><strong>One-time</strong><small>Use a proxy for this run.</small></span></label>
+                  <label class="choice-card"><input type="radio" name="proxy_mode" value="random"><span><strong>Random pool</strong><small>Pick an enabled proxy.</small></span></label>
+                </div>
+              </fieldset>
+              <label id="manual-proxy" class="field" hidden><span>One-time proxy</span><input name="raw_proxy" type="password" autocomplete="off" spellcheck="false" placeholder="http://host:port:user:pass"></label>
+              <label class="check-line"><input name="cleanup_requested" type="checkbox"><span>Close and delete this new profile after the run</span></label>
+            </div>
+            <fieldset id="parameters" class="parameters-fieldset"><legend>Workflow parameters</legend><p>Select a workflow.</p></fieldset>
+            <div class="form-actions"><p class="form-note"><span class="accent-mark">●</span> One active run at a time</p><button id="run-submit" class="primary-button" type="submit">Run workflow <span aria-hidden="true">↗</span></button></div>
+          </form>
+        </section>
 
-      <section aria-labelledby="profiles-heading">
-        <h2 id="profiles-heading">Profiles</h2>
-        <ul id="profiles" aria-live="polite"></ul>
-      </section>
+        <section class="panel profiles-panel" aria-labelledby="profiles-heading">
+          <div class="panel-heading">
+            <div><p class="eyebrow">02 / IDENTITIES</p><h2 id="profiles-heading">Profiles</h2></div>
+            <span class="panel-code">GEMLOGIN</span>
+          </div>
+          <p class="section-intro">Browser identities available from the local GemLogin service.</p>
+          <ul id="profiles" class="data-list" aria-live="polite"></ul>
+        </section>
 
-      <section aria-labelledby="proxies-heading">
-        <h2 id="proxies-heading">Proxy Pool</h2>
-        <form id="proxy-form">
-          <label>Label <input name="label" required autocomplete="off"></label>
-          <label>Proxy <input name="raw_proxy" type="password" required autocomplete="off" spellcheck="false"></label>
-          <label><input name="enabled" type="checkbox" checked> Enabled</label>
-          <button type="submit">Save proxy</button>
-        </form>
-        <ul id="proxies" aria-live="polite"></ul>
-      </section>
+        <section class="panel proxies-panel" aria-labelledby="proxies-heading">
+          <div class="panel-heading">
+            <div><p class="eyebrow">03 / NETWORK</p><h2 id="proxies-heading">Proxy Pool</h2></div>
+            <span class="panel-code">ENCRYPTED</span>
+          </div>
+          <p class="section-intro">Store reusable proxies locally. Credentials stay masked in the dashboard.</p>
+          <form id="proxy-form" class="proxy-form">
+            <label class="field"><span>Label</span><input name="label" required autocomplete="off" placeholder="e.g. Bangkok residential"></label>
+            <label class="field"><span>Proxy address</span><input name="raw_proxy" type="password" required autocomplete="off" spellcheck="false" placeholder="http://host:port:user:pass"></label>
+            <div class="form-actions"><label class="check-line"><input name="enabled" type="checkbox" checked><span>Enabled for random selection</span></label><button class="secondary-button" type="submit">Save proxy <span aria-hidden="true">+</span></button></div>
+          </form>
+          <ul id="proxies" class="data-list" aria-live="polite"></ul>
+        </section>
 
-      <section aria-labelledby="history-heading">
-        <h2 id="history-heading">Run History</h2>
-        <ol id="runs" aria-live="polite"></ol>
-      </section>
+        <section class="panel history-panel" aria-labelledby="history-heading">
+          <div class="panel-heading">
+            <div><p class="eyebrow">04 / RECEIPTS</p><h2 id="history-heading">Run History</h2></div>
+            <span class="panel-code">LOCAL LOG</span>
+          </div>
+          <p class="section-intro">Recent workflow outcomes and temporary-profile cleanup state.</p>
+          <ol id="runs" class="data-list run-list" aria-live="polite"></ol>
+        </section>
+      </div>
     </main>
     <script type="module" src="/app.js"></script>
   </body>

@@ -96,6 +96,7 @@ async function load() {
   const history = loadRuns();
   const [health, workflows, groups, profiles] = await Promise.all([optionalLoad("health", null), optionalLoad("gemlogin/workflows", []), optionalLoad("gemlogin/groups", []), optionalLoad("gemlogin/profiles", [])]);
   data = {...data, workflows, groups, profiles};
+  status.dataset.state = health?.app === "ok" ? "ready" : "error";
   status.textContent = health?.app === "ok" ? `Service ready; GemLogin ${health.gemlogin}.` : "Service unavailable.";
   option($("#workflow"), workflows, "Choose a workflow"); option($("#group"), groups, "Choose a group"); option($("#profile"), profiles, "Choose a profile");
   renderProfiles(); renderParameters(); await Promise.all([loadProxies(), history]);
