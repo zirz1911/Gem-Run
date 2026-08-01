@@ -147,4 +147,9 @@ export class RunStore {
   findActive() {
     return runRecord(this.db.prepare(`SELECT * FROM runs WHERE status IN (${activeStatuses.map(() => "?").join(", ")}) ORDER BY created_at LIMIT 1`).get(...activeStatuses));
   }
+
+  findRecoverable() {
+    return runRecord(this.db.prepare(`SELECT * FROM runs WHERE status IN (${activeStatuses.map(() => "?").join(", ")})
+      OR (cleanup_status = 'pending' AND cleanup_requested = 1 AND created_profile_id IS NOT NULL) ORDER BY created_at LIMIT 1`).get(...activeStatuses));
+  }
 }

@@ -3,14 +3,14 @@ import test from "node:test";
 import {RunService} from "../server/run-service.js";
 import {normalizeRemoteStatus} from "../server/status.js";
 
-function makeContext({remoteStatus = "success", hangStatus = false, deleteError, deleteErrors, runTimeoutSeconds = 30} = {}) {
+function makeContext({remoteStatus = "success", hangStatus = false, hangCreate = false, hangSubmit = false, deleteError, deleteErrors, runTimeoutSeconds = 30} = {}) {
   const records = new Map();
   let nextId = 1;
   const calls = [];
   const client = {
     calls,
-    async createProfile(details) { calls.push({name: "createProfile", details}); return {data: {id: 99}}; },
-    async executeCloud(details) { calls.push({name: "executeCloud", details}); return {data: {id: "remote-1", status: "submitted"}}; },
+    async createProfile(details, options = {}) { calls.push({name: "createProfile", details, signal: options.signal}); return hangCreate ? new Promise(() => {}) : {data: {id: 99}}; },
+    async executeCloud(details, options = {}) { calls.push({name: "executeCloud", details, signal: options.signal}); return hangSubmit ? new Promise(() => {}) : {data: {id: "remote-1", status: "submitted"}}; },
     async checkScriptStatus() { calls.push({name: "checkScriptStatus"}); return hangStatus ? new Promise(() => {}) : {data: {status: remoteStatus}}; },
     async closeProfile(profileId) { calls.push({name: "closeProfile", profileId}); },
     async deleteProfile(profileId) { calls.push({name: "deleteProfile", profileId}); const error = deleteErrors?.shift() ?? deleteError; if (error) throw error; }
@@ -20,7 +20,8 @@ function makeContext({remoteStatus = "success", hangStatus = false, deleteError,
     get(id) { const run = records.get(String(id)); return run && {...run}; },
     updates: [],
     update(id, patch) { this.updates.push({...patch}); const run = {...records.get(String(id)), ...patch}; records.set(String(id), run); return {...run}; },
-    findActive() { return [...records.values()].find((run) => ["queued", "submitted", "running"].includes(run.status)) ?? null; }
+    findActive() { return [...records.values()].find((run) => ["queued", "submitted", "running"].includes(run.status)) ?? null; },
+    findRecoverable() { return [...records.values()].find((run) => ["queued", "submitted", "running"].includes(run.status) || (run.cleanup_status === "pending" && run.created_profile_id)) ?? null; }
   };
   const proxyStore = {picked: 0, pickRandomEnabled() { this.picked += 1; return {id: 7, scheme: "http", host: "proxy.example", port: 8000, username: "alice", password: "secret"}; }};
   let tick = 0;
@@ -71,12 +72,12 @@ test("new profile deletes after workflow failure", async () => {
 });
 
 test("new profile deletes after timeout", async () => {
-  const ctx = makeContext({remoteStatus: "running", runTimeoutSeconds: 0});
+  const ctx = makeContext({remoteStatus: "running", runTimeoutSeconds: 0.001});
   await ctx.service.start({workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "none", cleanup_requested: true});
   await ctx.drain();
   assert.equal(ctx.store.get("run-1").error_message, "workflow timed out");
   assert.equal(ctx.client.calls.at(-1).name, "deleteProfile");
-  assert.deepEqual(ctx.store.updates.filter(({status}) => status).map(({status}) => status), ["submitted", "timeout", "done"]);
+  assert.deepEqual(ctx.store.updates.filter(({status}) => status).map(({status}) => status), ["submitted", "running", "timeout", "done"]);
 });
 
 test("a hung status request reaches its deadline and cleans the created profile", {timeout: 100}, async () => {
@@ -86,6 +87,15 @@ test("a hung status request reaches its deadline and cleans the created profile"
   assert.equal(ctx.store.get("run-1").error_message, "workflow timed out");
   assert.deepEqual(ctx.client.calls.map((call) => call.name), ["createProfile", "executeCloud", "checkScriptStatus", "closeProfile", "deleteProfile"]);
   assert.deepEqual(ctx.store.updates.filter(({status}) => status).map(({status}) => status), ["submitted", "timeout", "done"]);
+});
+
+test("a hung profile creation is aborted at the absolute deadline", {timeout: 100}, async () => {
+  const ctx = makeContext({hangCreate: true, runTimeoutSeconds: 1});
+  await ctx.service.start({workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "none", cleanup_requested: true});
+  await ctx.drain();
+  assert.equal(ctx.store.get("run-1").error_message, "workflow timed out");
+  assert.equal(ctx.client.calls[0].signal.aborted, true);
+  assert.deepEqual(ctx.store.updates.filter(({status}) => status).map(({status}) => status), ["timeout", "done"]);
 });
 
 test("cleanup failure preserves the original run result and retries deletion once", async () => {
@@ -123,7 +133,17 @@ test("recovers an active run and cleans its recorded new profile", async () => {
   const ctx = makeContext();
   ctx.store.create({workflow_id: "wf-1", profile_mode: "new", created_profile_id: 99, cleanup_requested: true, status: "running", cleanup_status: "pending"});
   await ctx.service.recover();
-  assert.equal(ctx.store.get("run-1").status, "failed");
+  assert.equal(ctx.store.get("run-1").status, "done");
   assert.equal(ctx.store.get("run-1").error_message, "run interrupted by restart");
+  assert.deepEqual(ctx.store.updates.filter(({status}) => status).map(({status}) => status), ["failed", "done"]);
+  assert.deepEqual(ctx.client.calls.map((call) => call.name), ["closeProfile", "deleteProfile"]);
+});
+
+test("recovers a terminal run whose temporary-profile cleanup is still pending", async () => {
+  const ctx = makeContext();
+  ctx.store.create({workflow_id: "wf-1", profile_mode: "new", created_profile_id: 99, cleanup_requested: true, status: "success", cleanup_status: "pending"});
+  await ctx.service.recover();
+  assert.equal(ctx.store.get("run-1").status, "done");
+  assert.equal(ctx.store.get("run-1").cleanup_status, "done");
   assert.deepEqual(ctx.client.calls.map((call) => call.name), ["closeProfile", "deleteProfile"]);
 });

@@ -26,13 +26,14 @@ export class GemLoginClient {
     this.fetchImpl = fetchImpl;
   }
 
-  async request(baseUrl, path, {method = "GET", body} = {}) {
+  async request(baseUrl, path, {method = "GET", body, signal} = {}) {
     let response;
     try {
       response = await this.fetchImpl(`${baseUrl}${path}`, {
         method,
         headers: body === undefined ? undefined : {"content-type": "application/json"},
-        body: body === undefined ? undefined : JSON.stringify(body)
+        body: body === undefined ? undefined : JSON.stringify(body),
+        ...(signal ? {signal} : {})
       });
     } catch {
       throw new Error("GemLogin request failed (HTTP 0): unavailable");
@@ -51,21 +52,21 @@ export class GemLoginClient {
     return this.request(this.baseUrl, path, options);
   }
 
-  status() { return this.local("/api/status"); }
-  listProfiles() { return this.local("/api/profiles"); }
-  getProfile(profileId) { return this.local(`/api/profile/${encodeURIComponent(profileId)}`); }
-  listGroups() { return this.local("/api/groups"); }
-  listWorkflows() { return this.local("/api/scripts"); }
-  createProfile(details) { return this.local("/api/profiles/create", {method: "POST", body: details}); }
-  startProfile(profileId) { return this.local(`/api/profiles/start/${encodeURIComponent(profileId)}`); }
-  closeProfile(profileId) { return this.local(`/api/profiles/close/${encodeURIComponent(profileId)}`); }
-  deleteProfile(profileId) { return this.local(`/api/profiles/delete/${encodeURIComponent(profileId)}`); }
-  checkProfileStatus(profileId) { return this.local(`/api/profiles/check-status/${encodeURIComponent(profileId)}`, {method: "POST"}); }
-  checkScriptStatus(scriptId, profileId) {
-    return this.local(`/api/scripts/check-status/${encodeURIComponent(scriptId)}`, {method: "POST", body: {profileId: String(profileId)}});
+  status(options) { return this.local("/api/status", options); }
+  listProfiles(options) { return this.local("/api/profiles", options); }
+  getProfile(profileId, options) { return this.local(`/api/profile/${encodeURIComponent(profileId)}`, options); }
+  listGroups(options) { return this.local("/api/groups", options); }
+  listWorkflows(options) { return this.local("/api/scripts", options); }
+  createProfile(details, options = {}) { return this.local("/api/profiles/create", {method: "POST", body: details, ...options}); }
+  startProfile(profileId, options) { return this.local(`/api/profiles/start/${encodeURIComponent(profileId)}`, options); }
+  closeProfile(profileId, options) { return this.local(`/api/profiles/close/${encodeURIComponent(profileId)}`, options); }
+  deleteProfile(profileId, options) { return this.local(`/api/profiles/delete/${encodeURIComponent(profileId)}`, options); }
+  checkProfileStatus(profileId, options = {}) { return this.local(`/api/profiles/check-status/${encodeURIComponent(profileId)}`, {method: "POST", ...options}); }
+  checkScriptStatus(scriptId, profileId, options = {}) {
+    return this.local(`/api/scripts/check-status/${encodeURIComponent(scriptId)}`, {method: "POST", body: {profileId: String(profileId)}, ...options});
   }
 
-  executeCloud({profileId, workflowId, parameter, closeBrowser}) {
+  executeCloud({profileId, workflowId, parameter, closeBrowser}, options = {}) {
     return this.request(this.cloudBase, "/api/v2/execscript", {
       method: "POST",
       body: {
@@ -76,7 +77,8 @@ export class GemLoginClient {
         device_id: this.cloudDeviceId,
         soft_id: this.cloudSoftId,
         token: this.cloudToken
-      }
+      },
+      ...options
     });
   }
 }

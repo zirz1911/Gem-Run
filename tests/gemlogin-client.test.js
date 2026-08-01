@@ -56,6 +56,17 @@ test("local methods use the documented methods, paths, and encoded IDs", async (
   ]);
 });
 
+test("optional abort signals are forwarded without changing existing method calls", async () => {
+  const {client, calls} = makeClient();
+  const signal = new AbortController().signal;
+  await client.createProfile({name: "Temp"}, {signal});
+  await client.executeCloud({profileId: 63, workflowId: "wf-1", parameter: {}, closeBrowser: false}, {signal});
+  await client.checkScriptStatus("wf-1", 63, {signal});
+  await client.closeProfile(63, {signal});
+  await client.deleteProfile(63, {signal});
+  assert.equal(calls.every(({options}) => options.signal === signal), true);
+});
+
 test("executeCloud sends the GemLogin webhook shape without returning its token", async () => {
   const {client, calls} = makeClient({success: true, run_id: "remote-1", token: "secret"});
 

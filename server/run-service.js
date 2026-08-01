@@ -2,6 +2,9 @@ import {parseProxy} from "./proxy-store.js";
 import {normalizeRemoteStatus} from "./status.js";
 
 const pollIntervalMs = 2000;
+const cleanupTimeoutMs = 5000;
+
+class RunTimeoutError extends Error {}
 
 function sleep(ms) {
   let timer;
@@ -29,8 +32,8 @@ function proxyValue(proxy) {
 }
 
 export class RunService {
-  constructor({gemloginClient, proxyStore, runStore, clock = () => new Date(), sleep: sleepImpl = sleep, runTimeoutSeconds = 300}) {
-    Object.assign(this, {gemloginClient, proxyStore, runStore, clock, sleep: sleepImpl, runTimeoutSeconds});
+  constructor({gemloginClient, proxyStore, runStore, clock = () => new Date(), sleep: sleepImpl = sleep, runTimeoutSeconds = 300, cleanupTimeout = cleanupTimeoutMs}) {
+    Object.assign(this, {gemloginClient, proxyStore, runStore, clock, sleep: sleepImpl, runTimeoutSeconds, cleanupTimeout});
     this.tasks = new Set();
   }
 
@@ -55,7 +58,7 @@ export class RunService {
     const run = this.runStore.create({
       workflow_id: String(input.workflow_id), workflow_name: input.workflow_name ?? null,
       profile_mode: input.profile_mode, profile_id: input.profile_mode === "existing" ? String(input.profile_id) : null,
-      cleanup_requested: Boolean(input.cleanup_requested), status: "queued",
+      cleanup_requested: Boolean(input.cleanup_requested), status: "queued", started_at: timestamp(this.clock),
       cleanup_status: input.cleanup_requested ? "pending" : "not_requested"
     });
     const task = this.execute(run.id, input).catch(() => {});
@@ -72,27 +75,33 @@ export class RunService {
   async drain() { await Promise.all([...this.tasks]); }
 
   async pollStatus(workflowId, profileId, deadline) {
+    return this.runWithDeadline(deadline, (signal) => this.gemloginClient.checkScriptStatus(workflowId, profileId, {signal})).then(normalizeRemoteStatus);
+  }
+
+  async runWithDeadline(deadline, operation) {
     const remaining = deadline - new Date(timestamp(this.clock)).getTime();
-    if (remaining <= 0) return "timeout";
+    if (remaining <= 0) throw new RunTimeoutError();
+    const controller = new AbortController();
     const timeout = this.sleep(remaining);
     try {
       const result = await Promise.race([
-        this.gemloginClient.checkScriptStatus(workflowId, profileId).then((payload) => ({payload})),
+        Promise.resolve().then(() => operation(controller.signal)).then((value) => ({value}), (error) => ({error})),
         Promise.resolve(timeout).then(() => ({timedOut: true}))
       ]);
-      return result.timedOut ? "timeout" : normalizeRemoteStatus(result.payload);
+      if (result.timedOut) {
+        controller.abort();
+        throw new RunTimeoutError();
+      }
+      if (result.error) throw result.error;
+      return result.value;
     } finally {
       timeout.cancel?.();
     }
   }
 
-  async terminal(runId, status, errorMessage) {
-    this.runStore.update(runId, {status});
-    return this.finish(runId, errorMessage);
-  }
-
   async execute(runId, input) {
-    let run = this.runStore.update(runId, {started_at: timestamp(this.clock)});
+    let run = this.runStore.get(runId);
+    const deadline = new Date(run.started_at).getTime() + this.runTimeoutSeconds * 1000;
     try {
       let currentProfileId = run.profile_id;
       if (run.profile_mode === "new") {
@@ -104,51 +113,59 @@ export class RunService {
         } else if (input.proxy_mode === "manual") {
           proxy = parseProxy(input.raw_proxy);
         }
-        const created = await this.gemloginClient.createProfile({name: input.profile_name, group_id: String(input.group_id), ...(proxy ? {proxy: proxyValue(proxy)} : {})});
+        const created = await this.runWithDeadline(deadline, (signal) => this.gemloginClient.createProfile({name: input.profile_name, group_id: String(input.group_id), ...(proxy ? {proxy: proxyValue(proxy)} : {})}, {signal}));
         currentProfileId = profileId(created);
         if (currentProfileId == null) throw new Error("profile creation failed");
         run = this.runStore.update(runId, {created_profile_id: String(currentProfileId)});
       }
-      const submitted = await this.gemloginClient.executeCloud({
+      const submitted = await this.runWithDeadline(deadline, (signal) => this.gemloginClient.executeCloud({
         profileId: currentProfileId, workflowId: run.workflow_id, parameter: input.parameter ?? {},
         closeBrowser: run.profile_mode === "new" && run.cleanup_requested
-      });
+      }, {signal}));
       run = this.runStore.update(runId, {status: "submitted", remote_run_id: remoteRunId(submitted)});
-      const deadline = new Date(run.started_at).getTime() + this.runTimeoutSeconds * 1000;
       while (true) {
         const status = await this.pollStatus(run.workflow_id, currentProfileId, deadline);
-        if (status === "success") return this.terminal(runId, "success", null);
-        if (status === "failed") return this.terminal(runId, "failed", "remote workflow failed");
-        if (status === "timeout" || new Date(timestamp(this.clock)).getTime() >= deadline) return this.terminal(runId, "timeout", "workflow timed out");
+        if (status === "success") return this.finish(runId, "success", null, deadline);
+        if (status === "failed") return this.finish(runId, "failed", "remote workflow failed", deadline);
+        if (status === "timeout" || new Date(timestamp(this.clock)).getTime() >= deadline) return this.finish(runId, "timeout", "workflow timed out", deadline);
         run = this.runStore.update(runId, {status: "running"});
         await this.sleep(pollIntervalMs);
       }
-    } catch {
-      return this.finish(runId, "workflow execution failed");
+    } catch (error) {
+      return this.finish(runId, error instanceof RunTimeoutError ? "timeout" : "failed", error instanceof RunTimeoutError ? "workflow timed out" : "workflow execution failed", deadline);
     }
   }
 
-  async finish(runId, errorMessage) {
-    const run = this.runStore.update(runId, {status: "done", error_message: errorMessage, finished_at: timestamp(this.clock)});
-    await this.cleanup(run);
+  async finish(runId, status, errorMessage, deadline) {
+    const run = this.runStore.get(runId);
+    const terminal = this.runStore.update(runId, {
+      status, error_message: errorMessage, cleanup_status: run.cleanup_requested ? "pending" : "not_requested"
+    });
+    let cleanupStatus = terminal.cleanup_status;
+    try { cleanupStatus = await this.cleanup(terminal, Math.max(deadline, new Date(timestamp(this.clock)).getTime()) + this.cleanupTimeout); }
+    catch { cleanupStatus = "failed"; }
+    return this.runStore.update(runId, {status: "done", cleanup_status: cleanupStatus, finished_at: timestamp(this.clock)});
   }
 
-  async cleanup(run) {
-    if (!run.cleanup_requested || !run.created_profile_id) return;
+  async cleanup(run, deadline) {
+    if (!run.cleanup_requested || !run.created_profile_id) return run.cleanup_status === "pending" ? "failed" : run.cleanup_status;
     let failed = false;
-    try { await this.gemloginClient.closeProfile(run.created_profile_id); } catch { failed = true; }
-    try { await this.gemloginClient.deleteProfile(run.created_profile_id); }
+    try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.closeProfile(run.created_profile_id, {signal})); } catch { failed = true; }
+    try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.deleteProfile(run.created_profile_id, {signal})); }
     catch {
-      try { await this.gemloginClient.deleteProfile(run.created_profile_id); } catch { failed = true; }
+      try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.deleteProfile(run.created_profile_id, {signal})); } catch { failed = true; }
     }
-    this.runStore.update(run.id, {cleanup_status: failed ? "failed" : "done"});
+    return failed ? "failed" : "done";
   }
 
   async recover() {
     let run;
-    while ((run = this.runStore.findActive())) {
-      const failed = this.runStore.update(run.id, {status: "failed", error_message: "run interrupted by restart", finished_at: timestamp(this.clock)});
-      await this.cleanup(failed);
+    const find = this.runStore.findRecoverable?.bind(this.runStore) ?? this.runStore.findActive.bind(this.runStore);
+    while ((run = find())) {
+      const active = ["queued", "submitted", "running"].includes(run.status);
+      const recoverable = active ? this.runStore.update(run.id, {status: "failed", error_message: "run interrupted by restart"}) : run;
+      const cleanupStatus = await this.cleanup(recoverable, new Date(timestamp(this.clock)).getTime() + this.cleanupTimeout);
+      this.runStore.update(run.id, {status: "done", cleanup_status: cleanupStatus, finished_at: timestamp(this.clock)});
     }
   }
 }
