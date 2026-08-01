@@ -1,11 +1,15 @@
 const $ = (selector) => document.querySelector(selector);
-const status = $("#status");
-const error = $("#error");
-const runForm = $("#run-form");
-const proxyForm = $("#proxy-form");
+let status;
+let error;
+let runForm;
+let proxyForm;
 const activeStatuses = new Set(["queued", "submitted", "running"]);
 let data = {workflows: [], groups: [], profiles: [], proxies: [], activeRun: null};
 let poller;
+
+export function serializeParameters(controls) {
+  return Object.fromEntries([...controls].map((control) => [control.name.slice(10), control.type === "checkbox" ? Boolean(control.checked) : control.value]));
+}
 
 async function api(path, options) {
   const response = await fetch(`/api/${path}`, options);
@@ -37,10 +41,14 @@ function renderParameters() {
     const control = parameter.type === "boolean" ? document.createElement("input") : document.createElement(parameter.options ? "select" : "input");
     control.name = `parameter.${parameter.name}`;
     control.required = Boolean(parameter.required);
-    if (parameter.type === "boolean") control.type = "checkbox";
-    else if (parameter.options) control.append(...parameter.options.map((value) => new Option(value, value)));
-    else control.type = parameter.type === "number" ? "number" : "text";
-    if (parameter.default !== undefined && parameter.default !== "***") control.value = parameter.default;
+    if (parameter.type === "boolean") {
+      control.type = "checkbox";
+      control.checked = control.defaultChecked = parameter.default === true;
+    } else {
+      if (parameter.options) control.append(...parameter.options.map((value) => new Option(value, value)));
+      else control.type = parameter.type === "number" ? "number" : "text";
+      if (parameter.default !== undefined && parameter.default !== "***") control.value = parameter.default;
+    }
     if (parameter.description) label.append(document.createTextNode(` — ${parameter.description}`));
     label.append(control);
     return label;
@@ -72,16 +80,25 @@ function renderRuns(runs) {
   $("#runs").replaceChildren(...runs.map((run) => Object.assign(document.createElement("li"), {textContent: `#${run.id} · ${run.workflow_name || run.workflow_id} · ${run.status}${run.cleanup_status ? ` · cleanup: ${run.cleanup_status}` : ""}${run.error_message ? ` · ${run.error_message}` : ""}`})));
   if (data.activeRun) poll(data.activeRun.id);
 }
-async function loadProxies() { data.proxies = await api("proxies"); renderProxies(); }
-async function loadRuns() { renderRuns(await api("runs")); }
+async function loadProxies() {
+  try { data.proxies = await api("proxies"); renderProxies(); }
+  catch { setError("Some dashboard data could not be loaded."); }
+}
+async function loadRuns() {
+  try { renderRuns(await api("runs")); }
+  catch { setError("Run history could not be loaded."); }
+}
+async function optionalLoad(path, fallback) {
+  try { return await api(path); }
+  catch { setError("Some dashboard data could not be loaded."); return fallback; }
+}
 async function load() {
-  try {
-    const [health, workflows, groups, profiles] = await Promise.all([api("health"), api("gemlogin/workflows"), api("gemlogin/groups"), api("gemlogin/profiles")]);
-    data = {...data, workflows, groups, profiles};
-    status.textContent = health.app === "ok" ? `Service ready; GemLogin ${health.gemlogin}.` : "Service unavailable.";
-    option($("#workflow"), workflows, "Choose a workflow"); option($("#group"), groups, "Choose a group"); option($("#profile"), profiles, "Choose a profile");
-    renderProfiles(); renderParameters(); await Promise.all([loadProxies(), loadRuns()]);
-  } catch (cause) { status.textContent = "Dashboard unavailable."; setError(cause.message); }
+  const history = loadRuns();
+  const [health, workflows, groups, profiles] = await Promise.all([optionalLoad("health", null), optionalLoad("gemlogin/workflows", []), optionalLoad("gemlogin/groups", []), optionalLoad("gemlogin/profiles", [])]);
+  data = {...data, workflows, groups, profiles};
+  status.textContent = health?.app === "ok" ? `Service ready; GemLogin ${health.gemlogin}.` : "Service unavailable.";
+  option($("#workflow"), workflows, "Choose a workflow"); option($("#group"), groups, "Choose a group"); option($("#profile"), profiles, "Choose a profile");
+  renderProfiles(); renderParameters(); await Promise.all([loadProxies(), history]);
 }
 async function updateProxy(id, payload, raw) {
   try { await api(`proxies/${id}`, {method: "PATCH", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); if (raw) raw.value = ""; await loadProxies(); }
@@ -91,15 +108,18 @@ function poll(id) {
   clearTimeout(poller);
   poller = setTimeout(async () => {
     try { const run = await api(`runs/${id}`); if (active(run)) poll(id); else await loadRuns(); }
-    catch (cause) { setError(cause.message); }
+    catch (cause) { setError(cause.message); poll(id); }
   }, 2000);
 }
-runForm.addEventListener("change", (event) => { if (event.target.name === "profile_mode" || event.target.name === "proxy_mode") syncRunForm(); if (event.target.id === "workflow") renderParameters(); });
-runForm.addEventListener("submit", async (event) => {
+function initialize() {
+  status = $("#status"); error = $("#error"); runForm = $("#run-form"); proxyForm = $("#proxy-form");
+  syncRunForm();
+  runForm.addEventListener("change", (event) => { if (event.target.name === "profile_mode" || event.target.name === "proxy_mode") syncRunForm(); if (event.target.id === "workflow") renderParameters(); });
+  runForm.addEventListener("submit", async (event) => {
   event.preventDefault(); setError("");
   const form = new FormData(runForm); const workflow = data.workflows.find((item) => String(item.id) === form.get("workflow_id"));
   const payload = {workflow_id: form.get("workflow_id"), workflow_name: workflow?.name || null, profile_mode: form.get("profile_mode"), cleanup_requested: form.has("cleanup_requested"), parameter: {}};
-  for (const [key, value] of form) if (key.startsWith("parameter.")) payload.parameter[key.slice(10)] = value;
+  payload.parameter = serializeParameters($("#parameters").querySelectorAll("[name^='parameter.']"));
   if (payload.profile_mode === "existing") payload.profile_id = form.get("profile_id");
   else Object.assign(payload, {profile_name: form.get("profile_name"), group_id: form.get("group_id"), proxy_mode: form.get("proxy_mode"), ...(form.get("proxy_mode") === "manual" ? {raw_proxy: form.get("raw_proxy")} : {})});
   try { $("#run-submit").disabled = true; const run = await api("runs", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); runForm.elements.raw_proxy.value = ""; status.textContent = `Run #${run.id} started.`; await loadRuns(); }
@@ -110,4 +130,6 @@ proxyForm.addEventListener("submit", async (event) => {
   try { await api("proxies", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({label: form.get("label"), raw_proxy: form.get("raw_proxy"), enabled: form.has("enabled")})}); proxyForm.reset(); proxyForm.elements.enabled.checked = true; await loadProxies(); }
   catch (cause) { setError(cause.message); }
 });
-load();
+  load();
+}
+if (typeof document !== "undefined") initialize();

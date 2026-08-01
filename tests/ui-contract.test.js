@@ -15,3 +15,18 @@ test("dashboard exposes the required panels without cloud credential names", asy
   }
   assert.doesNotMatch(script, /GEMLOGIN_CLOUD_(?:DEVICE_ID|SOFT_ID|TOKEN)/);
 });
+
+test("workflow form serialization preserves checked and unchecked booleans", async () => {
+  const {serializeParameters} = await import(`../public/app.js?form-contract=${Date.now()}`);
+  assert.deepEqual(serializeParameters([
+    {name: "parameter.enabled", type: "checkbox", checked: true, value: "on"},
+    {name: "parameter.archive", type: "checkbox", checked: false, value: "on"},
+    {name: "parameter.limit", type: "number", value: "2"}
+  ]), {enabled: true, archive: false, limit: "2"});
+});
+
+test("dashboard contracts retry a failed run poll and load history independently", async () => {
+  const script = await readFile(new URL("public/app.js", root), "utf8");
+  assert.match(script, /catch \(cause\) \{ setError\(cause\.message\); poll\(id\); \}/);
+  assert.match(script, /await loadRuns\(\);/);
+});
