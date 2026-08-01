@@ -84,6 +84,11 @@
           </div>
           <p class="section-intro">Browser identities available from the local GemLogin service.</p>
           <ul id="profiles" class="data-list" aria-live="polite"></ul>
+          <div id="run-progress" class="run-progress" hidden aria-live="polite">
+            <div class="run-progress-heading"><span class="section-label">Running profiles</span><strong id="run-progress-count">0 / 0 complete</strong></div>
+            <div class="progress-track" role="progressbar" aria-label="Workflow profile progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="run-progress-bar"></span></div>
+            <p id="run-progress-detail" class="input-hint">0% · 0 running · 0 queued</p>
+          </div>
         </section>
 
         <section class="panel proxies-panel" aria-labelledby="proxies-heading">

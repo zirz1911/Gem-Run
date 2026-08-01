@@ -111,6 +111,13 @@ legend { padding: 0; }
 
 .data-list { margin: 0; padding: 0; list-style: none; }
 .profiles-panel .data-list { max-height: 465px; overflow-y: auto; }
+.run-progress { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.run-progress-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.run-progress-heading .section-label { margin: 0; }
+.run-progress-heading strong { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .72rem; }
+.progress-track { height: 8px; margin-top: 9px; overflow: hidden; background: var(--line); border-radius: 999px; }
+.progress-track span { display: block; width: 0; height: 100%; background: var(--teal); border-radius: inherit; transition: width .25s ease; }
+.run-progress .input-hint { margin-bottom: 0; }
 .proxies-panel .data-list, .history-panel .data-list { max-height: 420px; padding-right: 8px; overflow-y: auto; }
 .data-list li { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-width: 0; padding: 12px 0; border-bottom: 1px solid var(--line); color: var(--ink); font-size: .84rem; line-height: 1.35; }
 .data-list li:first-child { padding-top: 0; }

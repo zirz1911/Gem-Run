@@ -16,6 +16,7 @@ test("dashboard exposes the required panels without cloud credential names", asy
   assert.doesNotMatch(script, /GEMLOGIN_CLOUD_(?:DEVICE_ID|SOFT_ID|TOKEN)/);
   assert.match(html, /id="delete-selected-proxies"/);
   assert.match(html, /id="delete-all-proxies"/);
+  assert.match(html, /id="run-progress"/);
   assert.match(script, /Promise\.allSettled\(ids\.map/);
   assert.match(html, /name="repeat_count"/);
   assert.match(html, /name="execution_mode"/);
@@ -23,6 +24,7 @@ test("dashboard exposes the required panels without cloud credential names", asy
   assert.match(await readFile(new URL("public/styles.css", root), "utf8"), /\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
   assert.match(script, /repeat_count/);
   assert.match(script, /max_concurrency/);
+  assert.match(script, /renderRunProgress/);
 });
 
 test("workflow form serialization preserves checked and unchecked booleans", async () => {
@@ -35,10 +37,21 @@ test("workflow form serialization preserves checked and unchecked booleans", asy
   assert.deepEqual(parseProxyLines(" http://one:1:u:p \n\nhttp://two:2:u:p\r\n"), ["http://one:1:u:p", "http://two:2:u:p"]);
 });
 
+test("summarizes active batch progress", async () => {
+  const {summarizeBatchProgress} = await import(`../public/app.js?progress-contract=${Date.now()}`);
+  assert.deepEqual(summarizeBatchProgress([
+    {id: 3, batch_id: "batch-1", batch_total: 3, status: "queued"},
+    {id: 2, batch_id: "batch-1", batch_total: 3, status: "running"},
+    {id: 1, batch_id: "batch-1", batch_total: 3, status: "done"}
+  ]), {total: 3, completed: 1, running: 1, queued: 1, percent: 33});
+  assert.equal(summarizeBatchProgress([{id: 1, status: "done"}]), null);
+});
+
 test("dashboard contracts retry a failed run poll and load history independently", async () => {
   const script = await readFile(new URL("public/app.js", root), "utf8");
   assert.match(script, /catch \(cause\) \{ setError\(cause\.message\); poll\(id\); \}/);
   assert.match(script, /await loadRuns\(\);/);
   assert.match(script, /async function loadProfiles\(\)/);
-  assert.match(script, /await Promise\.all\(\[loadRuns\(\), loadProfiles\(\)\]\)/);
+  assert.match(script, /const runs = await api\("runs"\);/);
+  assert.match(script, /if \(!active\(run\)\) await loadProfiles\(\);/);
 });

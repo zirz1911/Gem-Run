@@ -28,6 +28,17 @@ function option(select, items, placeholder) {
 function profileMode() { return runForm.elements.profile_mode.value; }
 function proxyMode() { return runForm.elements.proxy_mode.value; }
 function active(run) { return run && activeStatuses.has(run.status); }
+export function summarizeBatchProgress(runs) {
+  const activeRuns = runs.filter(active);
+  if (!activeRuns.length) return null;
+  const batchId = activeRuns.find((run) => run.batch_id)?.batch_id;
+  const batchRuns = batchId ? runs.filter((run) => run.batch_id === batchId) : [activeRuns[0]];
+  const total = Number(batchRuns.find((run) => run.batch_total)?.batch_total || batchRuns.length || 1);
+  const completed = batchRuns.filter((run) => run.status === "done").length;
+  const running = batchRuns.filter((run) => run.status === "running" || run.status === "submitted").length;
+  const queued = batchRuns.filter((run) => run.status === "queued").length;
+  return {total, completed, running, queued, percent: Math.round((completed / total) * 100)};
+}
 function updateProxyCount() {
   const count = parseProxyLines(proxyForm?.elements.raw_proxy?.value).length;
   const target = $("#proxy-count");
@@ -74,6 +85,18 @@ function renderParameters() {
 }
 function renderProfiles() {
   $("#profiles").replaceChildren(...data.profiles.map((profile) => Object.assign(document.createElement("li"), {textContent: `${profile.name || profile.id} · ${profile.status || "unknown"}${profile.proxy ? ` · ${profile.proxy}` : ""}`})));
+}
+function renderRunProgress(runs) {
+  const progress = summarizeBatchProgress(runs);
+  const panel = $("#run-progress");
+  if (!panel) return;
+  panel.hidden = !progress;
+  if (!progress) return;
+  $("#run-progress-count").textContent = `${progress.completed} / ${progress.total} complete`;
+  $("#run-progress-detail").textContent = `${progress.percent}% · ${progress.running} running · ${progress.queued} queued`;
+  const bar = $("#run-progress-bar");
+  bar.style.width = `${progress.percent}%`;
+  bar.parentElement.setAttribute("aria-valuenow", String(progress.percent));
 }
 function renderProxies() {
   selectedProxyIds = new Set([...selectedProxyIds].filter((id) => data.proxies.some((proxy) => String(proxy.id) === String(id))));
@@ -122,6 +145,7 @@ async function deleteProxies(ids, message) {
 function renderRuns(runs) {
   data.activeRun = runs.find(active) || null;
   $("#run-submit").disabled = Boolean(data.activeRun);
+  renderRunProgress(runs);
   $("#runs").replaceChildren(...runs.map((run) => Object.assign(document.createElement("li"), {textContent: `#${run.id}${run.batch_id ? ` · batch ${run.batch_index}/${run.batch_total}` : ""} · ${run.workflow_name || run.workflow_id} · ${run.status}${run.cleanup_status ? ` · cleanup: ${run.cleanup_status}` : ""}${run.error_message ? ` · ${run.error_message}` : ""}`})));
   if (data.activeRun) poll(data.activeRun.id);
 }
@@ -161,7 +185,9 @@ function poll(id) {
     try {
       const run = await api(`runs/${id}`);
       if (run.created_profile_id && !data.profiles.some((profile) => String(profile.id) === String(run.created_profile_id))) await loadProfiles();
-      if (active(run)) poll(id); else await Promise.all([loadRuns(), loadProfiles()]);
+      const runs = await api("runs");
+      renderRuns(runs);
+      if (!active(run)) await loadProfiles();
     }
     catch (cause) { setError(cause.message); poll(id); }
   }, 2000);
