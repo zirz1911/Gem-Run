@@ -9,7 +9,7 @@ const invalidRunRequests = new Set([
   "Proxy port must be between 1 and 65535"
 ]);
 const runFields = ["workflow_id", "workflow_name", "profile_mode", "profile_id", "profile_name", "group_id", "proxy_mode", "raw_proxy", "parameter", "cleanup_requested"];
-const sensitiveName = /(?:api[_-]?key|authorization|cookie|credential|pass(?:word)?|secret|token|user(?:name)?)/i;
+const sensitiveName = /(?:api[_-]?key|access[_-]?key|private[_-]?key|authorization|(?:^|[_-])auth(?:$|[_-])|(?:^|[_-])bearer(?:$|[_-])|(?:^|[_-])headers?(?:$|[_-])|(?:^|[_-])config(?:uration)?(?:$|[_-])|cookie|credential|pass(?:word)?|secret|token|user(?:name)?)/i;
 
 function items(payload) { return Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []; }
 function value(payload) { return payload?.data && !Array.isArray(payload.data) ? payload.data : payload; }

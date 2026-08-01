@@ -78,6 +78,18 @@ test("workflow route masks sensitive defaults and drops upstream fields", async 
   assert.equal(JSON.stringify(body).includes("workflow-secret"), false);
 });
 
+test("workflow route masks auth, key, bearer, header, and config defaults", async () => {
+  const {body} = await request(makeApp({client: {listWorkflows: async () => ({data: [{id: "wf-2", parameters: [
+    {name: "auth", default: "auth-secret"}, {name: "access_key", default: "access-secret"},
+    {name: "private_key", default: "private-secret"}, {name: "bearer", default: "bearer-secret"},
+    {name: "headers", default: "header-secret"}, {name: "config", default: "config-secret"},
+    {name: "retries", default: 3}
+  ]}]})}}), "/api/gemlogin/workflows");
+  assert.deepEqual(body[0].parameters.map(({name, default: value}) => [name, value]), [
+    ["auth", "***"], ["access_key", "***"], ["private_key", "***"], ["bearer", "***"], ["headers", "***"], ["config", "***"], ["retries", 3]
+  ]);
+});
+
 test("profile start returns only the CDP address and browser metadata", async () => {
   const {status, body} = await request(makeApp(), "/api/gemlogin/profiles/63/start", {method: "POST"});
   assert.equal(status, 200);
