@@ -10,6 +10,9 @@ let poller;
 export function serializeParameters(controls) {
   return Object.fromEntries([...controls].map((control) => [control.name.slice(10), control.type === "checkbox" ? Boolean(control.checked) : control.value]));
 }
+export function parseProxyLines(value) {
+  return String(value ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
 
 async function api(path, options) {
   const response = await fetch(`/api/${path}`, options);
@@ -23,6 +26,11 @@ function option(select, items, placeholder) {
 function profileMode() { return runForm.elements.profile_mode.value; }
 function proxyMode() { return runForm.elements.proxy_mode.value; }
 function active(run) { return run && activeStatuses.has(run.status); }
+function updateProxyCount() {
+  const count = parseProxyLines(proxyForm?.elements.raw_proxy?.value).length;
+  const target = $("#proxy-count");
+  if (target) target.textContent = `${count} ${count === 1 ? "proxy" : "proxies"} detected`;
+}
 function syncRunForm() {
   const isNew = profileMode() === "new";
   $("#existing-profile").hidden = isNew;
@@ -126,11 +134,22 @@ function initialize() {
   try { $("#run-submit").disabled = true; const run = await api("runs", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); runForm.elements.raw_proxy.value = ""; status.textContent = `Run #${run.id} started.`; await loadRuns(); }
   catch (cause) { setError(cause.message); $("#run-submit").disabled = false; }
 });
-proxyForm.addEventListener("submit", async (event) => {
-  event.preventDefault(); setError(""); const form = new FormData(proxyForm);
-  try { await api("proxies", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({label: form.get("label"), raw_proxy: form.get("raw_proxy"), enabled: form.has("enabled")})}); proxyForm.reset(); proxyForm.elements.enabled.checked = true; await loadProxies(); }
-  catch (cause) { setError(cause.message); }
-});
+  proxyForm.addEventListener("submit", async (event) => {
+  event.preventDefault(); setError(""); const form = new FormData(proxyForm); const proxies = parseProxyLines(form.get("raw_proxy"));
+  proxyForm.elements.raw_proxy.value = proxies.join("\n");
+  if (!proxies.length) { setError("Enter at least one proxy, one per line."); return; }
+  const prefix = String(form.get("label") || "").trim(); let saved = 0;
+  try {
+    for (const [index, rawProxy] of proxies.entries()) {
+      const label = prefix ? `${prefix}${proxies.length > 1 ? ` ${index + 1}` : ""}` : `Proxy ${index + 1}`;
+      await api("proxies", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({label, raw_proxy: rawProxy, enabled: form.has("enabled")})});
+      saved += 1;
+    }
+    proxyForm.reset(); proxyForm.elements.enabled.checked = true; updateProxyCount(); await loadProxies();
+  } catch (cause) { setError(`Saved ${saved} of ${proxies.length} proxies. ${cause.message}`); await loadProxies(); }
+  });
+  proxyForm.elements.raw_proxy.addEventListener("input", updateProxyCount);
+  updateProxyCount();
   load();
 }
 if (typeof document !== "undefined") initialize();

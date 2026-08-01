@@ -76,8 +76,9 @@
           </div>
           <p class="section-intro">Store reusable proxies locally. Credentials stay masked in the dashboard.</p>
           <form id="proxy-form" class="proxy-form">
-            <label class="field"><span>Label</span><input name="label" required autocomplete="off" placeholder="e.g. Bangkok residential"></label>
-            <label class="field"><span>Proxy address</span><input name="raw_proxy" type="password" required autocomplete="off" spellcheck="false" placeholder="http://host:port:user:pass"></label>
+            <label class="field"><span>Label prefix <small>(optional)</small></span><input name="label" autocomplete="off" placeholder="e.g. Bangkok residential"></label>
+            <label class="field"><span>Proxy list <small>(one per line)</small></span><textarea name="raw_proxy" rows="5" required autocomplete="off" spellcheck="false" placeholder="http://host:port:user:pass&#10;http://host:port:user:pass"></textarea></label>
+            <p id="proxy-count" class="input-hint" aria-live="polite">0 proxies detected</p>
             <div class="form-actions"><label class="check-line"><input name="enabled" type="checkbox" checked><span>Enabled for random selection</span></label><button class="secondary-button" type="submit">Save proxy <span aria-hidden="true">+</span></button></div>
           </form>
           <ul id="proxies" class="data-list" aria-live="polite"></ul>

@@ -59,9 +59,10 @@ form { margin: 0; }
 .field { display: grid; gap: 7px; min-width: 0; }
 .field > span { letter-spacing: .06em; }
 input, select, button { min-height: 42px; font: inherit; }
-input:not([type="checkbox"]):not([type="radio"]), select { width: 100%; padding: 9px 11px; color: var(--ink); background: var(--paper); border: 1px solid var(--line-strong); border-radius: 2px; }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea { width: 100%; padding: 9px 11px; color: var(--ink); background: var(--paper); border: 1px solid var(--line-strong); border-radius: 2px; }
+textarea { min-height: 116px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem; line-height: 1.55; }
 input::placeholder { color: #9b978e; }
-input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, button:focus-visible { outline: 3px solid rgb(230 83 47 / 28%); outline-offset: 2px; border-color: var(--accent); }
+input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus, button:focus-visible { outline: 3px solid rgb(230 83 47 / 28%); outline-offset: 2px; border-color: var(--accent); }
 button { padding: 9px 14px; border: 1px solid var(--ink); border-radius: 2px; cursor: pointer; transition: background-color .16s ease, color .16s ease, transform .16s ease; }
 button:hover:not(:disabled) { transform: translateY(-1px); }
 button:disabled { cursor: wait; opacity: .55; }
@@ -84,6 +85,7 @@ legend { padding: 0; }
 .new-profile-fields fieldset { margin-top: 18px; }
 .check-line { display: flex; align-items: flex-start; gap: 9px; margin-top: 16px; color: var(--muted); font-size: .82rem; line-height: 1.4; cursor: pointer; }
 .check-line input { flex: 0 0 auto; margin-top: 2px; accent-color: var(--teal); }
+.input-hint { margin: 8px 0 0; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .68rem; }
 .parameters-fieldset { padding: 16px; background: var(--paper-deep); border: 1px solid var(--line); }
 .parameters-fieldset legend { padding: 0 7px; }
 #parameters label { display: grid; gap: 7px; margin-top: 13px; color: var(--muted); font-size: .82rem; }
