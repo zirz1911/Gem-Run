@@ -5,12 +5,14 @@ import {loadConfig} from "./config.js";
 import {decodeEncryptionKey} from "./crypto.js";
 import {openDatabase} from "./database.js";
 import {GemLoginClient} from "./gemlogin-client.js";
+import {ProxyStore, RunStore} from "./proxy-store.js";
+import {RunService} from "./run-service.js";
 
 const config = loadConfig(process.env);
 const databasePath = process.env.DATABASE_PATH || "data/gem-run.sqlite";
 mkdirSync(dirname(databasePath), {recursive: true});
 const db = openDatabase(databasePath);
-decodeEncryptionKey(config.proxyEncryptionKey);
+const proxyEncryptionKey = decodeEncryptionKey(config.proxyEncryptionKey);
 const gemloginClient = new GemLoginClient({
   baseUrl: config.gemloginBase,
   cloudBase: config.cloudBase,
@@ -18,7 +20,12 @@ const gemloginClient = new GemLoginClient({
   cloudSoftId: config.cloudSoftId,
   cloudToken: config.cloudToken
 });
-const app = createApp({config, gemloginClient, db, runService: null});
+const runService = new RunService({
+  gemloginClient, proxyStore: new ProxyStore(db, proxyEncryptionKey), runStore: new RunStore(db),
+  runTimeoutSeconds: config.runTimeoutSeconds
+});
+void runService.recover().catch(() => {});
+const app = createApp({config, gemloginClient, db, runService});
 
 app.listen(config.port, "0.0.0.0", () => {
   console.log(`Gem-Run listening on ${config.port}`);
