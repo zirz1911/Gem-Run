@@ -24,7 +24,7 @@ const runService = new RunService({
   gemloginClient, proxyStore: new ProxyStore(db, proxyEncryptionKey), runStore: new RunStore(db),
   runTimeoutSeconds: config.runTimeoutSeconds
 });
-void runService.recover().catch(() => {});
+void runService.recover().catch(() => console.error("Gem-Run recovery failed"));
 const app = createApp({config, gemloginClient, db, runService});
 
 app.listen(config.port, "0.0.0.0", () => {

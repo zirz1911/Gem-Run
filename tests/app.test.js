@@ -28,3 +28,16 @@ test("health uses the configured GemLogin client", async () => {
   assert.deepEqual((await response.json()).gemlogin, {version: "1.0"});
   await new Promise((resolve) => server.close(resolve));
 });
+
+test("run-start errors use a static response", async () => {
+  const app = createApp({
+    config, gemloginClient: null, db: null,
+    runService: {start: async () => { throw new Error("proxy://alice:secret@host"); }, get: () => null}
+  });
+  const server = app.listen(0);
+  const {port} = server.address();
+  const response = await fetch(`http://127.0.0.1:${port}/api/runs`, {method: "POST", headers: {"content-type": "application/json"}, body: "{}"});
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), {error: "Unable to start run"});
+  await new Promise((resolve) => server.close(resolve));
+});

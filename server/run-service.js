@@ -3,6 +3,13 @@ import {normalizeRemoteStatus} from "./status.js";
 
 const pollIntervalMs = 2000;
 
+function sleep(ms) {
+  let timer;
+  const wait = new Promise((resolve) => { timer = setTimeout(resolve, ms); });
+  wait.cancel = () => clearTimeout(timer);
+  return wait;
+}
+
 function timestamp(clock) {
   const value = clock();
   const date = value instanceof Date ? value : new Date(value);
@@ -22,8 +29,8 @@ function proxyValue(proxy) {
 }
 
 export class RunService {
-  constructor({gemloginClient, proxyStore, runStore, clock = () => new Date(), sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), runTimeoutSeconds = 300}) {
-    Object.assign(this, {gemloginClient, proxyStore, runStore, clock, sleep, runTimeoutSeconds});
+  constructor({gemloginClient, proxyStore, runStore, clock = () => new Date(), sleep: sleepImpl = sleep, runTimeoutSeconds = 300}) {
+    Object.assign(this, {gemloginClient, proxyStore, runStore, clock, sleep: sleepImpl, runTimeoutSeconds});
     this.tasks = new Set();
   }
 
@@ -64,6 +71,26 @@ export class RunService {
 
   async drain() { await Promise.all([...this.tasks]); }
 
+  async pollStatus(workflowId, profileId, deadline) {
+    const remaining = deadline - new Date(timestamp(this.clock)).getTime();
+    if (remaining <= 0) return "timeout";
+    const timeout = this.sleep(remaining);
+    try {
+      const result = await Promise.race([
+        this.gemloginClient.checkScriptStatus(workflowId, profileId).then((payload) => ({payload})),
+        Promise.resolve(timeout).then(() => ({timedOut: true}))
+      ]);
+      return result.timedOut ? "timeout" : normalizeRemoteStatus(result.payload);
+    } finally {
+      timeout.cancel?.();
+    }
+  }
+
+  async terminal(runId, status, errorMessage) {
+    this.runStore.update(runId, {status});
+    return this.finish(runId, errorMessage);
+  }
+
   async execute(runId, input) {
     let run = this.runStore.update(runId, {started_at: timestamp(this.clock)});
     try {
@@ -89,10 +116,10 @@ export class RunService {
       run = this.runStore.update(runId, {status: "submitted", remote_run_id: remoteRunId(submitted)});
       const deadline = new Date(run.started_at).getTime() + this.runTimeoutSeconds * 1000;
       while (true) {
-        const status = normalizeRemoteStatus(await this.gemloginClient.checkScriptStatus(run.workflow_id, currentProfileId));
-        if (status === "success") return this.finish(runId, null);
-        if (status === "failed") return this.finish(runId, "remote workflow failed");
-        if (status === "timeout" || new Date(timestamp(this.clock)).getTime() >= deadline) return this.finish(runId, "workflow timed out");
+        const status = await this.pollStatus(run.workflow_id, currentProfileId, deadline);
+        if (status === "success") return this.terminal(runId, "success", null);
+        if (status === "failed") return this.terminal(runId, "failed", "remote workflow failed");
+        if (status === "timeout" || new Date(timestamp(this.clock)).getTime() >= deadline) return this.terminal(runId, "timeout", "workflow timed out");
         run = this.runStore.update(runId, {status: "running"});
         await this.sleep(pollIntervalMs);
       }
