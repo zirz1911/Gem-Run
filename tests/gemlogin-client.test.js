@@ -161,6 +161,7 @@ test("refreshProfileList clicks GemLogin's real profile refresh control", async 
   assert.equal(messages.length, 1);
   assert.equal(messages[0].method, "Runtime.evaluate");
   assert.match(messages[0].params.expression, /Refresh profile list button not found/);
+  assert.match(messages[0].params.expression, /querySelectorAll\('button,\[role="button"\]'\)/);
   assert.match(messages[0].params.expression, /el-icon-refresh/);
   assert.match(messages[0].params.expression, /setTimeout\(r,2000\)/);
 });
