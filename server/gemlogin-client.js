@@ -112,7 +112,7 @@ export class GemLoginClient {
         params: {
           awaitPromise: true,
           returnByValue: true,
-          expression: `(async()=>{if(!location.hash.startsWith('#/profiles')){location.hash='#/profiles';await new Promise(r=>setTimeout(r,1000))}const deadline=Date.now()+10000;while(Date.now()<deadline){const b=[...document.querySelectorAll('button.el-button.is-plain.is-circle')].find(b=>b.querySelector('path')?.getAttribute('d')?.startsWith('M2 12'));if(b){b.click();await new Promise(r=>setTimeout(r,1000));return true}await new Promise(r=>setTimeout(r,100))}throw new Error('Refresh profile list button not found')})()`
+          expression: `(async()=>{if(!location.hash.startsWith('#/profiles')){location.hash='#/profiles';await new Promise(r=>setTimeout(r,1000))}const deadline=Date.now()+10000;while(Date.now()<deadline){const b=[...document.querySelectorAll('button.el-button.is-plain.is-circle')].find(b=>{const label=\`\${b.title||''} \${b.getAttribute('aria-label')||''} \${b.innerHTML}\`.toLowerCase();return /refresh|reload|el-icon-refresh/.test(label)||b.querySelector('path')?.getAttribute('d')?.startsWith('M2 12')});if(b){b.click();await new Promise(r=>setTimeout(r,2000));return true}await new Promise(r=>setTimeout(r,100))}throw new Error('Refresh profile list button not found')})()`
         }
       })));
       socket.addEventListener("message", (event) => {
