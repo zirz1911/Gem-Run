@@ -28,6 +28,8 @@ export function openDatabase(filename) {
       created_profile_id TEXT,
       proxy_id INTEGER,
       cleanup_requested INTEGER NOT NULL,
+      close_browser INTEGER NOT NULL DEFAULT 0,
+      delete_profile INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL,
       remote_run_id TEXT,
       error_message TEXT,
@@ -48,8 +50,11 @@ export function openDatabase(filename) {
     );
   `);
   const columns = new Set(db.prepare("PRAGMA table_info(runs)").all().map(({name}) => name));
-  for (const [name, definition] of [["batch_id", "TEXT"], ["batch_index", "INTEGER"], ["batch_total", "INTEGER"]]) {
-    if (!columns.has(name)) db.exec(`ALTER TABLE runs ADD COLUMN ${name} ${definition}`);
+  for (const [name, definition] of [["batch_id", "TEXT"], ["batch_index", "INTEGER"], ["batch_total", "INTEGER"], ["close_browser", "INTEGER NOT NULL DEFAULT 0"], ["delete_profile", "INTEGER NOT NULL DEFAULT 0"]]) {
+    if (!columns.has(name)) {
+      db.exec(`ALTER TABLE runs ADD COLUMN ${name} ${definition}`);
+      if (name === "close_browser" || name === "delete_profile") db.exec(`UPDATE runs SET ${name} = cleanup_requested`);
+    }
   }
   return db;
 }

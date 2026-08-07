@@ -1,7 +1,7 @@
 import {decryptSecret, encryptSecret} from "./crypto.js";
 
-const activeStatuses = ["queued", "submitted", "running"];
-const runColumns = new Set(["workflow_id", "workflow_name", "profile_mode", "profile_id", "created_profile_id", "proxy_id", "cleanup_requested", "status", "remote_run_id", "error_message", "cleanup_status", "batch_id", "batch_index", "batch_total", "started_at", "finished_at"]);
+const activeStatuses = ["queued", "submitted", "running", "cancelling"];
+const runColumns = new Set(["workflow_id", "workflow_name", "profile_mode", "profile_id", "created_profile_id", "proxy_id", "cleanup_requested", "close_browser", "delete_profile", "status", "remote_run_id", "error_message", "cleanup_status", "batch_id", "batch_index", "batch_total", "started_at", "finished_at"]);
 
 function now() { return new Date().toISOString(); }
 
@@ -46,7 +46,7 @@ function maskedProxy(row) {
 }
 
 function runRecord(row) {
-  return row ? {...row, cleanup_requested: Boolean(row.cleanup_requested)} : null;
+  return row ? {...row, cleanup_requested: Boolean(row.cleanup_requested), close_browser: Boolean(row.close_browser), delete_profile: Boolean(row.delete_profile)} : null;
 }
 
 export class ProxyStore {
@@ -122,6 +122,7 @@ export class RunStore {
       workflow_id: input.workflow_id, workflow_name: input.workflow_name ?? null, profile_mode: input.profile_mode,
       profile_id: input.profile_id ?? null, created_profile_id: input.created_profile_id ?? null, proxy_id: input.proxy_id ?? null,
       cleanup_requested: input.cleanup_requested ? 1 : 0, status: input.status, remote_run_id: input.remote_run_id ?? null,
+      close_browser: Number(Boolean(input.close_browser ?? input.cleanup_requested)), delete_profile: Number(Boolean(input.delete_profile ?? input.cleanup_requested)),
       error_message: input.error_message ?? null, cleanup_status: input.cleanup_status, batch_id: input.batch_id ?? null,
       batch_index: input.batch_index ?? null, batch_total: input.batch_total ?? null, created_at: timestamp,
       started_at: normalizeTimestamp(input.started_at), finished_at: normalizeTimestamp(input.finished_at)
@@ -141,7 +142,7 @@ export class RunStore {
     const entries = Object.entries(patch).filter(([key]) => runColumns.has(key));
     if (!entries.length) return this.get(id);
     const values = Object.fromEntries(entries.map(([key, value]) => [key,
-      key === "cleanup_requested" ? Number(Boolean(value)) : ["started_at", "finished_at"].includes(key) ? normalizeTimestamp(value) : value
+      ["cleanup_requested", "close_browser", "delete_profile"].includes(key) ? Number(Boolean(value)) : ["started_at", "finished_at"].includes(key) ? normalizeTimestamp(value) : value
     ]));
     values.id = id;
     const statement = entries.map(([key]) => `${key} = @${key}`).join(", ");
@@ -151,6 +152,10 @@ export class RunStore {
 
   findActive() {
     return runRecord(this.db.prepare(`SELECT * FROM runs WHERE status IN (${activeStatuses.map(() => "?").join(", ")}) ORDER BY created_at LIMIT 1`).get(...activeStatuses));
+  }
+
+  listBatch(batchId) {
+    return this.db.prepare("SELECT * FROM runs WHERE batch_id = ? ORDER BY batch_index").all(batchId).map(runRecord);
   }
 
   findRecoverable() {

@@ -9,7 +9,7 @@ const invalidRunRequests = new Set([
   "Proxy must include host, port, and complete credentials", "Proxy host is invalid",
   "Proxy port must be between 1 and 65535"
 ]);
-const runFields = ["workflow_id", "workflow_name", "profile_mode", "profile_id", "profile_name", "group_id", "proxy_mode", "raw_proxy", "parameter", "cleanup_requested", "repeat_count", "execution_mode", "max_concurrency"];
+const runFields = ["workflow_id", "workflow_name", "profile_mode", "profile_id", "profile_name", "group_id", "proxy_mode", "raw_proxy", "parameter", "cleanup_requested", "close_browser", "delete_profile", "repeat_count", "execution_mode", "max_concurrency"];
 const sensitiveName = /(?:api[_-]?key|access[_-]?key|private[_-]?key|authorization|(?:^|[_-])auth(?:$|[_-])|(?:^|[_-])bearer(?:$|[_-])|(?:^|[_-])headers?(?:$|[_-])|(?:^|[_-])config(?:uration)?(?:$|[_-])|cookie|credential|pass(?:word)?|secret|token|user(?:name)?)/i;
 
 function items(payload) { return Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []; }
@@ -38,7 +38,7 @@ function safeRun(run) {
   const batch = run.batch_id ? {batch_id: run.batch_id, batch_index: run.batch_index, batch_total: run.batch_total} : {};
   return {id: run.id, workflow_id: run.workflow_id, workflow_name: run.workflow_name ?? null, profile_mode: run.profile_mode,
     profile_id: run.profile_id ?? null, created_profile_id: run.created_profile_id ?? null, proxy_id: run.proxy_id ?? null,
-    cleanup_requested: Boolean(run.cleanup_requested), status: run.status, error_message: run.error_message ?? null,
+    cleanup_requested: Boolean(run.cleanup_requested), close_browser: Boolean(run.close_browser ?? run.cleanup_requested), delete_profile: Boolean(run.delete_profile ?? run.cleanup_requested), status: run.status, error_message: run.error_message ?? null,
     cleanup_status: run.cleanup_status ?? null, created_at: run.created_at ?? null, started_at: run.started_at ?? null, finished_at: run.finished_at ?? null, ...batch};
 }
 function safeBatch(batch) { return {batch_id: batch.batch_id, execution_mode: batch.execution_mode, max_concurrency: batch.max_concurrency, runs: batch.runs.map(safeRun)}; }
@@ -55,6 +55,8 @@ function validProxyInput(body, required = false) {
 }
 function validRunInput(input) {
   if (Object.hasOwn(input, "cleanup_requested") && typeof input.cleanup_requested !== "boolean") throw new Error("invalid run input");
+  if (Object.hasOwn(input, "close_browser") && typeof input.close_browser !== "boolean") throw new Error("invalid run input");
+  if (Object.hasOwn(input, "delete_profile") && typeof input.delete_profile !== "boolean") throw new Error("invalid run input");
   if (Object.hasOwn(input, "parameter") && (!input.parameter || typeof input.parameter !== "object" || Array.isArray(input.parameter))) throw new Error("invalid run input");
   return input;
 }
@@ -124,6 +126,15 @@ export function createRoutes({gemloginClient, proxyStore, runStore, runService, 
   router.get("/api/runs/:id", (request, response) => {
     const run = runService?.get(request.params.id) ?? runStore.get(request.params.id);
     return run ? response.json(safeRun(run)) : response.status(404).json({error: "Run not found"});
+  });
+  router.post("/api/runs/:id/cancel", async (request, response) => {
+    if (!runService?.cancel) return response.status(503).json({error: "Run service unavailable"});
+    try { return response.status(202).json(safeRun(await runService.cancel(request.params.id))); }
+    catch (error) {
+      if (error?.message === "run not found") return response.status(404).json({error: "Run not found"});
+      if (error?.message === "run is not active") return response.status(409).json({error: "Run is not active"});
+      return response.status(500).json({error: "Unable to cancel run"});
+    }
   });
   router.post("/api/runs", async (request, response) => {
     if (!runService) return response.status(503).json({error: "Run service unavailable"});

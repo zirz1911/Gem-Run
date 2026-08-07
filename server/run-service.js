@@ -6,6 +6,7 @@ const pollIntervalMs = 2000;
 const cleanupTimeoutMs = 5000;
 
 class RunTimeoutError extends Error {}
+class RunCancelledError extends Error {}
 
 function sleep(ms) {
   let timer;
@@ -36,19 +37,28 @@ function profileName(name, index, total) {
   return total === 1 ? name : `${name}-${String(index + 1).padStart(2, "0")}`;
 }
 
+function closeBrowserRequested(run) { return Boolean(run.close_browser ?? run.cleanup_requested); }
+function deleteProfileRequested(run) { return Boolean(run.delete_profile ?? run.cleanup_requested); }
+
 export class RunService {
   constructor({gemloginClient, proxyStore, runStore, clock = () => new Date(), sleep: sleepImpl = sleep, runTimeoutSeconds = 300, cleanupTimeout = cleanupTimeoutMs}) {
     Object.assign(this, {gemloginClient, proxyStore, runStore, clock, sleep: sleepImpl, runTimeoutSeconds, cleanupTimeout});
     this.tasks = new Set();
     this.refreshLock = Promise.resolve();
+    this.cancelled = new Set();
+    this.controllers = new Map();
   }
 
   validate(input) {
     if (!String(input?.workflow_id || "").trim()) throw new Error("workflow_id is required");
     if (!["existing", "new"].includes(input.profile_mode)) throw new Error("profile_mode must be existing or new");
+    for (const field of ["cleanup_requested", "close_browser", "delete_profile"]) {
+      if (input[field] !== undefined && typeof input[field] !== "boolean") throw new Error(`${field} must be a boolean`);
+    }
+    const deleteProfile = input.delete_profile ?? input.cleanup_requested ?? false;
     if (input.profile_mode === "existing") {
       if (input.profile_id == null || input.profile_id === "") throw new Error("profile_id is required");
-      if (input.cleanup_requested) throw new Error("cleanup is only available for new profiles");
+      if (deleteProfile) throw new Error(input.cleanup_requested ? "cleanup is only available for new profiles" : "delete_profile is only available for new profiles");
     } else {
       if (!String(input.profile_name || "").trim()) throw new Error("profile_name is required");
       if (input.group_id == null || input.group_id === "") throw new Error("group_id is required");
@@ -70,17 +80,19 @@ export class RunService {
     if (this.runStore.findActive()) throw new Error("an active run already exists");
     const repeatCount = Number(input.repeat_count ?? 1);
     const executionMode = input.execution_mode ?? "sequential";
+    const deleteProfile = input.delete_profile ?? input.cleanup_requested ?? false;
     const maxConcurrency = Math.min(Number(input.max_concurrency ?? (executionMode === "parallel" ? 2 : 1)), repeatCount);
     const batchId = repeatCount > 1 ? randomUUID() : null;
     const assignedProxies = this.assignProxies(input, repeatCount);
     const runs = Array.from({length: repeatCount}, (_, index) => this.runStore.create({
       workflow_id: String(input.workflow_id), workflow_name: input.workflow_name ?? null,
       profile_mode: input.profile_mode, profile_id: input.profile_mode === "existing" ? String(input.profile_id) : null,
-      proxy_id: assignedProxies[index]?.id ?? null, cleanup_requested: Boolean(input.cleanup_requested), status: "queued",
-      started_at: timestamp(this.clock), cleanup_status: input.cleanup_requested ? "pending" : "not_requested",
+      proxy_id: assignedProxies[index]?.id ?? null, cleanup_requested: Boolean(deleteProfile),
+      close_browser: Boolean(input.close_browser ?? input.cleanup_requested ?? false), delete_profile: Boolean(deleteProfile), status: "queued",
+      started_at: timestamp(this.clock), cleanup_status: deleteProfile ? "pending" : "not_requested",
       batch_id: batchId, batch_index: batchId ? index + 1 : null, batch_total: batchId ? repeatCount : null
     }));
-    const task = this.executeBatch(runs, input, assignedProxies, executionMode, maxConcurrency).catch(() => {});
+    const task = this.executeBatch(runs, input, assignedProxies, executionMode, maxConcurrency).catch(() => {}).finally(() => runs.forEach(({id}) => this.cancelled.delete(String(id))));
     this.tasks.add(task);
     void task.finally(() => this.tasks.delete(task));
     if (!batchId) return this.get(runs[0].id);
@@ -122,20 +134,42 @@ export class RunService {
 
   async drain() { await Promise.all([...this.tasks]); }
 
+  cancel(runId) {
+    const run = this.runStore.get(runId);
+    if (!run) throw new Error("run not found");
+    if (!["queued", "submitted", "running", "cancelling"].includes(run.status)) throw new Error("run is not active");
+    const runs = run.batch_id ? (this.runStore.listBatch?.(run.batch_id) ?? [run]) : [run];
+    for (const target of runs) {
+      if (!["queued", "submitted", "running", "cancelling"].includes(target.status)) continue;
+      const id = String(target.id);
+      this.cancelled.add(id);
+      this.runStore.update(target.id, {status: "cancelling", error_message: "run cancellation requested"});
+      for (const controller of this.controllers.get(id) ?? []) controller.abort();
+    }
+    return this.get(runId);
+  }
+
   refreshProfileList(options = {}) {
     const refresh = this.refreshLock.then(() => this.gemloginClient.refreshProfileList(options));
     this.refreshLock = refresh.catch(() => {});
     return refresh;
   }
 
-  async pollStatus(workflowId, profileId, deadline) {
-    return this.runWithDeadline(deadline, (signal) => this.gemloginClient.checkScriptStatus(workflowId, profileId, {signal})).then(normalizeRemoteStatus);
+  async pollStatus(workflowId, profileId, deadline, runId) {
+    return this.runWithDeadline(deadline, (signal) => this.gemloginClient.checkScriptStatus(workflowId, profileId, {signal}), runId).then(normalizeRemoteStatus);
   }
 
-  async runWithDeadline(deadline, operation) {
+  async runWithDeadline(deadline, operation, runId = null, allowCancelled = false) {
+    const key = runId == null ? null : String(runId);
+    if (key && !allowCancelled && this.cancelled.has(key)) throw new RunCancelledError();
     const remaining = deadline - new Date(timestamp(this.clock)).getTime();
     if (remaining <= 0) throw new RunTimeoutError();
     const controller = new AbortController();
+    if (key) {
+      const controllers = this.controllers.get(key) ?? new Set();
+      controllers.add(controller);
+      this.controllers.set(key, controllers);
+    }
     const timeout = this.sleep(remaining);
     try {
       const result = await Promise.race([
@@ -146,10 +180,16 @@ export class RunService {
         controller.abort();
         throw new RunTimeoutError();
       }
+      if (key && !allowCancelled && this.cancelled.has(key)) throw new RunCancelledError();
       if (result.error) throw result.error;
       return result.value;
     } finally {
       timeout.cancel?.();
+      if (key) {
+        const controllers = this.controllers.get(key);
+        controllers?.delete(controller);
+        if (controllers?.size === 0) this.controllers.delete(key);
+      }
     }
   }
 
@@ -157,6 +197,7 @@ export class RunService {
     let run = this.runStore.get(runId);
     const deadline = new Date(run.started_at).getTime() + this.runTimeoutSeconds * 1000;
     try {
+      if (this.cancelled.has(String(runId))) throw new RunCancelledError();
       let currentProfileId = run.profile_id;
       if (run.profile_mode === "new") {
         let proxy = assignedProxy;
@@ -167,23 +208,23 @@ export class RunService {
         } else if (input.proxy_mode === "manual") {
           proxy = parseProxy(input.raw_proxy);
         }
-        const created = await this.runWithDeadline(deadline, (signal) => this.gemloginClient.createProfile({profile_name: profileName(input.profile_name, (run.batch_index ?? 1) - 1, run.batch_total ?? 1), group_id: String(input.group_id), ...(proxy ? {raw_proxy: proxyValue(proxy)} : {})}, {signal}));
+        const created = await this.runWithDeadline(deadline, (signal) => this.gemloginClient.createProfile({profile_name: profileName(input.profile_name, (run.batch_index ?? 1) - 1, run.batch_total ?? 1), group_id: String(input.group_id), ...(proxy ? {raw_proxy: proxyValue(proxy)} : {})}, {signal}), runId);
         currentProfileId = profileId(created);
         if (currentProfileId == null) throw new Error("profile creation failed");
         run = this.runStore.update(runId, {created_profile_id: String(currentProfileId)});
-        await this.runWithDeadline(deadline, (signal) => this.gemloginClient.startProfile(currentProfileId, {signal}));
-        await this.runWithDeadline(deadline, (signal) => this.refreshProfileList({signal}));
+        await this.runWithDeadline(deadline, (signal) => this.gemloginClient.startProfile(currentProfileId, {signal}), runId);
+        await this.runWithDeadline(deadline, (signal) => this.refreshProfileList({signal}), runId);
       }
       const execute = run.profile_mode === "new" ? this.gemloginClient.executeLocal.bind(this.gemloginClient) : this.gemloginClient.executeCloud.bind(this.gemloginClient);
       const submitted = await this.runWithDeadline(deadline, (signal) => execute({
         profileId: currentProfileId, workflowId: run.workflow_id, parameter: input.parameter ?? {},
-        closeBrowser: run.profile_mode === "new" && run.cleanup_requested
-      }, {signal}));
+        closeBrowser: closeBrowserRequested(run) || (run.profile_mode === "new" && deleteProfileRequested(run))
+      }, {signal}), runId);
       run = this.runStore.update(runId, {status: "submitted", remote_run_id: run.profile_mode === "new" ? null : remoteRunId(submitted)});
       let observedRunning = false;
       const startupDeadline = Math.min(deadline, new Date(timestamp(this.clock)).getTime() + 15000);
       while (true) {
-        const status = await this.pollStatus(run.workflow_id, currentProfileId, deadline);
+        const status = await this.pollStatus(run.workflow_id, currentProfileId, deadline, runId);
         if (status === "running") observedRunning = true;
         if (status === "success") return this.finish(runId, "success", null, deadline);
         if (status === "failed") return this.finish(runId, "failed", "remote workflow failed", deadline);
@@ -196,14 +237,15 @@ export class RunService {
         await this.sleep(pollIntervalMs);
       }
     } catch (error) {
-      return this.finish(runId, error instanceof RunTimeoutError ? "timeout" : "failed", error instanceof RunTimeoutError ? "workflow timed out" : "workflow execution failed", deadline);
+      return this.finish(runId, error instanceof RunCancelledError ? "cancelled" : error instanceof RunTimeoutError ? "timeout" : "failed",
+        error instanceof RunCancelledError ? "run cancelled" : error instanceof RunTimeoutError ? "workflow timed out" : "workflow execution failed", deadline);
     }
   }
 
   async finish(runId, status, errorMessage, deadline) {
     const run = this.runStore.get(runId);
     const terminal = this.runStore.update(runId, {
-      status, error_message: errorMessage, cleanup_status: run.cleanup_requested ? "pending" : "not_requested"
+      status, error_message: errorMessage, cleanup_status: deleteProfileRequested(run) ? "pending" : "not_requested"
     });
     let cleanupStatus = terminal.cleanup_status;
     try { cleanupStatus = await this.cleanup(terminal, Math.max(deadline, new Date(timestamp(this.clock)).getTime()) + this.cleanupTimeout); }
@@ -212,15 +254,15 @@ export class RunService {
   }
 
   async cleanup(run, deadline) {
-    if (!run.cleanup_requested || !run.created_profile_id) return run.cleanup_status === "pending" ? "failed" : run.cleanup_status;
+    if (!deleteProfileRequested(run) || !run.created_profile_id) return run.cleanup_status === "pending" ? "failed" : run.cleanup_status;
     let failed = false;
     let deleted = false;
-    try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.closeProfile(run.created_profile_id, {signal})); } catch { failed = true; }
-    try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.deleteProfile(run.created_profile_id, {signal})); deleted = true; }
+    try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.closeProfile(run.created_profile_id, {signal}), run.id, true); } catch { failed = true; }
+    try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.deleteProfile(run.created_profile_id, {signal}), run.id, true); deleted = true; }
     catch {
-      try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.deleteProfile(run.created_profile_id, {signal})); deleted = true; } catch { failed = true; }
+      try { await this.runWithDeadline(deadline, (signal) => this.gemloginClient.deleteProfile(run.created_profile_id, {signal}), run.id, true); deleted = true; } catch { failed = true; }
     }
-    if (deleted) try { await this.runWithDeadline(deadline, (signal) => this.refreshProfileList({signal})); } catch {}
+    if (deleted) try { await this.runWithDeadline(deadline, (signal) => this.refreshProfileList({signal}), run.id, true); } catch {}
     return failed ? "failed" : "done";
   }
 
@@ -228,7 +270,7 @@ export class RunService {
     let run;
     const find = this.runStore.findRecoverable?.bind(this.runStore) ?? this.runStore.findActive.bind(this.runStore);
     while ((run = find())) {
-      const active = ["queued", "submitted", "running"].includes(run.status);
+      const active = ["queued", "submitted", "running", "cancelling"].includes(run.status);
       const recoverable = active ? this.runStore.update(run.id, {status: "failed", error_message: "run interrupted by restart"}) : run;
       const cleanupStatus = await this.cleanup(recoverable, new Date(timestamp(this.clock)).getTime() + this.cleanupTimeout);
       this.runStore.update(run.id, {status: "done", cleanup_status: cleanupStatus, finished_at: timestamp(this.clock)});

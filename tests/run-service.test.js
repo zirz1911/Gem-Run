@@ -17,11 +17,11 @@ function makeContext({remoteStatus = "success", remotePayload, hangStatus = fals
     async refreshProfileList(options = {}) { calls.push({name: "refreshProfileList", signal: options.signal}); },
     async executeLocal(details, options = {}) {
       calls.push({name: "executeLocal", details, signal: options.signal});
-      if (hangSubmit) return new Promise(() => {});
+      if (hangSubmit) return new Promise((resolve, reject) => options.signal?.addEventListener("abort", () => reject(new Error("aborted")), {once: true}));
       if (executionDelay) { activeExecutions += 1; maxActiveExecutions = Math.max(maxActiveExecutions, activeExecutions); await new Promise((resolve) => setTimeout(resolve, executionDelay)); activeExecutions -= 1; }
       return {success: true, id: "wf-1"};
     },
-    async executeCloud(details, options = {}) { calls.push({name: "executeCloud", details, signal: options.signal}); return hangSubmit ? new Promise(() => {}) : {data: {id: "remote-1", status: "submitted"}}; },
+    async executeCloud(details, options = {}) { calls.push({name: "executeCloud", details, signal: options.signal}); return hangSubmit ? new Promise((resolve, reject) => options.signal?.addEventListener("abort", () => reject(new Error("aborted")), {once: true})) : {data: {id: "remote-1", status: "submitted"}}; },
     async checkScriptStatus() { calls.push({name: "checkScriptStatus"}); return hangStatus ? new Promise(() => {}) : (remotePayload ?? {data: {status: remoteStatus}}); },
     async closeProfile(profileId) { calls.push({name: "closeProfile", profileId}); },
     async deleteProfile(profileId) { calls.push({name: "deleteProfile", profileId}); const error = deleteErrors?.shift() ?? deleteError; if (error) throw error; }
@@ -31,8 +31,9 @@ function makeContext({remoteStatus = "success", remotePayload, hangStatus = fals
     get(id) { const run = records.get(String(id)); return run && {...run}; },
     updates: [],
     update(id, patch) { this.updates.push({...patch}); const run = {...records.get(String(id)), ...patch}; records.set(String(id), run); return {...run}; },
-    findActive() { return [...records.values()].find((run) => ["queued", "submitted", "running"].includes(run.status)) ?? null; },
-    findRecoverable() { return [...records.values()].find((run) => ["queued", "submitted", "running"].includes(run.status) || (run.cleanup_status === "pending" && run.created_profile_id)) ?? null; }
+    findActive() { return [...records.values()].find((run) => ["queued", "submitted", "running", "cancelling"].includes(run.status)) ?? null; },
+    findRecoverable() { return [...records.values()].find((run) => ["queued", "submitted", "running", "cancelling"].includes(run.status) || (run.cleanup_status === "pending" && run.created_profile_id)) ?? null; },
+    listBatch(batchId) { return [...records.values()].filter((run) => run.batch_id === batchId).map((run) => ({...run})); }
   };
   const proxyStore = {picked: 0, pickRandomEnabled() { this.picked += 1; return {id: 7, scheme: "http", host: "proxy.example", port: 8000, username: "alice", password: "secret"}; }};
   let tick = 0;
@@ -70,6 +71,28 @@ test("existing profile never calls create or delete", async () => {
   assert.deepEqual(ctx.client.calls.map((call) => call.name), ["executeCloud", "checkScriptStatus"]);
   assert.equal(ctx.store.get("run-1").cleanup_status, "not_requested");
   assert.deepEqual(ctx.store.updates.filter(({status}) => status).map(({status}) => status), ["submitted", "success", "done"]);
+});
+
+test("existing profile can close its browser without cleanup", async () => {
+  const ctx = makeContext({remoteStatus: "success"});
+  await ctx.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_id: 63, close_browser: true, delete_profile: false});
+  await ctx.drain();
+  assert.equal(ctx.client.calls.find((call) => call.name === "executeCloud").details.closeBrowser, true);
+  assert.equal(ctx.client.calls.some((call) => ["closeProfile", "deleteProfile"].includes(call.name)), false);
+});
+
+test("new profile separates browser close from profile deletion", async () => {
+  const closeOnly = makeContext({remoteStatus: "success"});
+  await closeOnly.service.start({workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "none", close_browser: true, delete_profile: false});
+  await closeOnly.drain();
+  assert.equal(closeOnly.client.calls.find((call) => call.name === "executeLocal").details.closeBrowser, true);
+  assert.equal(closeOnly.client.calls.some((call) => call.name === "deleteProfile"), false);
+
+  const deleteOnly = makeContext({remoteStatus: "success"});
+  await deleteOnly.service.start({workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "none", close_browser: false, delete_profile: true});
+  await deleteOnly.drain();
+  assert.equal(deleteOnly.client.calls.find((call) => call.name === "executeLocal").details.closeBrowser, true);
+  assert.equal(deleteOnly.client.calls.filter((call) => call.name === "deleteProfile").length, 1);
 });
 
 test("new profile selects a proxy, creates, executes, and deletes on success", async () => {
@@ -164,6 +187,18 @@ test("second active run is rejected", async () => {
   const ctx = makeContext({remoteStatus: "running"});
   await ctx.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_id: 63, cleanup_requested: false});
   await assert.rejects(() => ctx.service.start({workflow_id: "wf-2", profile_mode: "existing", profile_id: 64, cleanup_requested: false}), /active run/);
+});
+
+test("cancel aborts an active task and finishes it as cancelled", async () => {
+  const ctx = makeContext({hangSubmit: true, realTime: true});
+  await ctx.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_id: 63});
+  await new Promise(setImmediate);
+  const cancelled = ctx.service.cancel("run-1");
+  assert.equal(cancelled.status, "cancelling");
+  await ctx.drain();
+  assert.equal(ctx.store.get("run-1").status, "done");
+  assert.equal(ctx.store.get("run-1").error_message, "run cancelled");
+  assert.equal(ctx.client.calls[0].signal.aborted, true);
 });
 
 test("validates profile mode and never stores a manual proxy", async () => {

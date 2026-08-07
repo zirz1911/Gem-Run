@@ -4,7 +4,7 @@ let error;
 let runForm;
 let proxyForm;
 let settingsForm;
-const activeStatuses = new Set(["queued", "submitted", "running"]);
+const activeStatuses = new Set(["queued", "submitted", "running", "cancelling"]);
 let data = {workflows: [], groups: [], profiles: [], proxies: [], activeRun: null};
 let selectedProxyIds = new Set();
 let poller;
@@ -63,6 +63,7 @@ function syncRunForm() {
   runForm.elements.profile_id.required = !isNew;
   runForm.elements.profile_name.required = isNew;
   runForm.elements.group_id.required = isNew;
+  runForm.elements.delete_profile.disabled = !isNew;
   $("#manual-proxy").hidden = !isNew || proxyMode() !== "manual";
   runForm.elements.raw_proxy.required = isNew && proxyMode() === "manual";
   $("#parallel-options").hidden = !isNew || runForm.elements.execution_mode.value !== "parallel";
@@ -161,6 +162,8 @@ async function deleteProxies(ids, message) {
 function renderRuns(runs) {
   data.activeRun = runs.find(active) || null;
   $("#run-submit").disabled = Boolean(data.activeRun);
+  $("#run-cancel").hidden = !data.activeRun;
+  $("#run-cancel").disabled = data.activeRun?.status === "cancelling";
   renderRunProgress(runs);
   $("#runs").replaceChildren(...runs.map((run) => Object.assign(document.createElement("li"), {textContent: `#${run.id}${run.batch_id ? ` · batch ${run.batch_index}/${run.batch_total}` : ""} · ${run.workflow_name || run.workflow_id} · ${run.status}${run.cleanup_status ? ` · cleanup: ${run.cleanup_status}` : ""}${run.error_message ? ` · ${run.error_message}` : ""}`})));
   if (data.activeRun) poll(data.activeRun.id);
@@ -195,6 +198,19 @@ async function updateProxy(id, payload, raw) {
   try { await api(`proxies/${id}`, {method: "PATCH", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); if (raw) raw.value = ""; await loadProxies(); }
   catch (cause) { setError(cause.message); }
 }
+async function cancelRun() {
+  const run = data.activeRun;
+  if (!run) return;
+  $("#run-cancel").disabled = true;
+  try {
+    await api(`runs/${run.id}/cancel`, {method: "POST"});
+    status.textContent = "Task cancellation requested.";
+    await loadRuns();
+  } catch (cause) {
+    setError(cause.message);
+    $("#run-cancel").disabled = false;
+  }
+}
 function poll(id) {
   clearTimeout(poller);
   poller = setTimeout(async () => {
@@ -215,7 +231,7 @@ function initialize() {
   runForm.addEventListener("submit", async (event) => {
   event.preventDefault(); setError("");
   const form = new FormData(runForm); const workflow = data.workflows.find((item) => String(item.id) === form.get("workflow_id"));
-  const payload = {workflow_id: form.get("workflow_id"), workflow_name: workflow?.name || null, profile_mode: form.get("profile_mode"), cleanup_requested: form.has("cleanup_requested"), parameter: {}};
+  const payload = {workflow_id: form.get("workflow_id"), workflow_name: workflow?.name || null, profile_mode: form.get("profile_mode"), close_browser: form.has("close_browser"), delete_profile: form.get("profile_mode") === "new" && form.has("delete_profile"), parameter: {}};
   payload.parameter = serializeParameters($("#parameters").querySelectorAll("[name^='parameter.']"));
   if (payload.profile_mode === "existing") payload.profile_id = form.get("profile_id");
   else Object.assign(payload, {profile_name: form.get("profile_name"), group_id: form.get("group_id"), proxy_mode: form.get("proxy_mode"), repeat_count: Number(form.get("repeat_count") || 1), execution_mode: form.get("execution_mode"), max_concurrency: form.get("execution_mode") === "parallel" ? Number(form.get("max_concurrency") || 2) : 1, ...(form.get("proxy_mode") === "manual" ? {raw_proxy: form.get("raw_proxy")} : {})});
@@ -242,6 +258,7 @@ function initialize() {
     selectedProxyIds = event.target.checked ? new Set(data.proxies.map((proxy) => String(proxy.id))) : new Set();
     renderProxies();
   });
+  $("#run-cancel").addEventListener("click", cancelRun);
   $("#delete-selected-proxies").addEventListener("click", () => deleteProxies([...selectedProxyIds], `Delete ${selectedProxyIds.size} selected proxies?`));
   $("#delete-all-proxies").addEventListener("click", () => deleteProxies(data.proxies.map((proxy) => proxy.id), `Delete all ${data.proxies.length} proxies?`));
   settingsForm.addEventListener("submit", async (event) => {

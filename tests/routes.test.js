@@ -79,7 +79,7 @@ test("run route returns 202 and forwards only allowed fields", async () => {
   });
   assert.equal(status, 202);
   assert.deepEqual(received.value, {workflow_id: "wf-1", profile_mode: "existing", profile_id: 63, cleanup_requested: false});
-  assert.deepEqual(body, {id: 1, workflow_id: "wf-1", workflow_name: null, profile_mode: "existing", profile_id: 63, created_profile_id: null, proxy_id: null, cleanup_requested: false, status: "queued", error_message: null, cleanup_status: null, created_at: null, started_at: null, finished_at: null});
+  assert.deepEqual(body, {id: 1, workflow_id: "wf-1", workflow_name: null, profile_mode: "existing", profile_id: 63, created_profile_id: null, proxy_id: null, cleanup_requested: false, close_browser: false, delete_profile: false, status: "queued", error_message: null, cleanup_status: null, created_at: null, started_at: null, finished_at: null});
 });
 
 test("batch run route forwards repeat and concurrency settings", async () => {
@@ -92,6 +92,26 @@ test("batch run route forwards repeat and concurrency settings", async () => {
   assert.equal(status, 202);
   assert.deepEqual(received.value, {workflow_id: "wf-1", profile_mode: "new", profile_name: "Batch", group_id: "1", proxy_mode: "none", repeat_count: 3, execution_mode: "parallel", max_concurrency: 2});
   assert.deepEqual(body, {batch_id: "batch-1", runs: []});
+});
+
+test("run route forwards close and delete options", async () => {
+  const received = {value: null};
+  const runService = {async start(input) { received.value = input; return {id: 1, ...input, status: "queued"}; }, get: () => null};
+  const {status} = await request(makeApp({runService}), "/api/runs", {
+    method: "POST", headers: {"content-type": "application/json"},
+    body: JSON.stringify({workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "none", close_browser: true, delete_profile: false})
+  });
+  assert.equal(status, 202);
+  assert.equal(received.value.close_browser, true);
+  assert.equal(received.value.delete_profile, false);
+});
+
+test("cancel route forwards the run id", async () => {
+  const runService = {cancel: async (id) => ({id, workflow_id: "wf-1", profile_mode: "existing", status: "cancelling"}), get: () => null};
+  const {status, body} = await request(makeApp({runService}), "/api/runs/1/cancel", {method: "POST"});
+  assert.equal(status, 202);
+  assert.equal(body.id, "1");
+  assert.equal(body.status, "cancelling");
 });
 
 test("workflow route masks sensitive defaults and drops upstream fields", async () => {
