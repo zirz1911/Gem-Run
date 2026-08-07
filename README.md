@@ -4,7 +4,7 @@ Gem-Run is a local dashboard for running GemLogin workflows. It can run in Docke
 
 ## Requirements
 
-- GemLogin installed and running on the same machine
+- GemLogin installed on the same machine
 - GemLogin Local API available at port `1010`
 - Node.js 22+ for native Windows runs and tests outside Docker
 - Docker Desktop with Docker Compose for the Docker setup
@@ -14,24 +14,22 @@ The dashboard is bound to `127.0.0.1:3200` by default. It is intentionally local
 ## Windows (CMD or PowerShell)
 
 1. Install Node.js 22+ and run `npm install` in the Gem-Run folder.
-2. Start GemLogin with:
-
-```text
---remote-debugging-port=9222
-```
-
-3. Run `start-windows.cmd` from CMD or PowerShell:
+2. Run `start-windows.cmd` from CMD or PowerShell:
 
 ```powershell
 .\start-windows.cmd
 ```
 
-4. Open <http://127.0.0.1:3200>.
+3. Open <http://127.0.0.1:3200>.
 
-The Windows launcher uses GemLogin at `127.0.0.1:1010` and CDP at `127.0.0.1:9222`. Override either value before starting if the VM uses another port:
+The Windows launcher opens GemLogin visibly with CDP enabled and leaves it running. If GemLogin is already ready, the launcher reuses it. If it is running without CDP and has no active profile browsers, the launcher restarts it automatically. It refuses to interrupt GemLogin when active browsers exist or status cannot be verified.
+
+The default executable is `%LOCALAPPDATA%\Programs\gemlogin\gemlogin.exe`; the local API is `127.0.0.1:1010` and CDP is `127.0.0.1:9222`. Override values before starting when another Windows account, installation path, or port is used:
 
 ```powershell
+$env:GEMLOGIN_EXE = "D:\Apps\GemLogin\gemlogin.exe"
 $env:GEMLOGIN_BASE = "http://127.0.0.1:1010"
+$env:GEMLOGIN_CDP_PORT = "9222"
 $env:GEMLOGIN_CDP_BASE = "http://127.0.0.1:9222"
 .\start-windows.cmd
 ```
