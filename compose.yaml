@@ -1,11 +1,32 @@
 services:
+  gemlogin-cdp:
+    build: .
+    command: ["node", "scripts/gemlogin-cdp-bridge.mjs"]
+    environment:
+      GEMLOGIN_CDP_REMOTE_HOST: host.docker.internal
+      GEMLOGIN_CDP_REMOTE_HEADER_HOST: 127.0.0.1
+      GEMLOGIN_CDP_REMOTE_PORT: 9222
+      GEMLOGIN_CDP_BRIDGE_HOST: 0.0.0.0
+      GEMLOGIN_CDP_BRIDGE_PORT: 9223
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9223/json/list').then(async (r) => { if (!r.ok || !Array.isArray(await r.json())) process.exit(1); }).catch(() => process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 2s
+
   gem-run:
     build: .
+    depends_on:
+      gemlogin-cdp:
+        condition: service_healthy
     ports:
       - "127.0.0.1:3200:3200"
     environment:
       GEMLOGIN_BASE: ${GEMLOGIN_BASE:-http://host.docker.internal:1010}
-      GEMLOGIN_CDP_BASE: ${GEMLOGIN_CDP_BASE:-}
+      GEMLOGIN_CDP_BASE: http://gemlogin-cdp:9223
       GEMLOGIN_CLOUD_BASE: ${GEMLOGIN_CLOUD_BASE:-https://app.gemlogin.io}
       GEMLOGIN_CLOUD_DEVICE_ID: ${GEMLOGIN_CLOUD_DEVICE_ID:-}
       GEMLOGIN_CLOUD_SOFT_ID: ${GEMLOGIN_CLOUD_SOFT_ID:-}

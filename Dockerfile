@@ -18,6 +18,7 @@ WORKDIR /app
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json package-lock.json ./
 COPY --chown=node:node server ./server
+COPY --chown=node:node scripts ./scripts
 COPY --chown=node:node public ./public
 RUN mkdir -p /app/data && chown node:node /app/data
 

@@ -1,15 +1,42 @@
 # Gem-Run
 
-Gem-Run is a local Docker dashboard for running GemLogin workflows. It can run an existing profile or create one or more temporary profiles with no proxy, a manually entered proxy, or randomly selected proxies from the saved proxy pool.
+Gem-Run is a local dashboard for running GemLogin workflows. It can run in Docker or directly on Windows, and can run an existing profile or create one or more temporary profiles with no proxy, a manually entered proxy, or randomly selected proxies from the saved proxy pool.
 
 ## Requirements
 
-- Docker Desktop with Docker Compose
 - GemLogin installed and running on the same machine
 - GemLogin Local API available at port `1010`
-- Node.js 22+ only when running the CDP bridge or tests outside Docker
+- Node.js 22+ for native Windows runs and tests outside Docker
+- Docker Desktop with Docker Compose for the Docker setup
 
 The dashboard is bound to `127.0.0.1:3200` by default. It is intentionally local-only because this release has no user authentication.
+
+## Windows (CMD or PowerShell)
+
+1. Install Node.js 22+ and run `npm install` in the Gem-Run folder.
+2. Start GemLogin with:
+
+```text
+--remote-debugging-port=9222
+```
+
+3. Run `start-windows.cmd` from CMD or PowerShell:
+
+```powershell
+.\start-windows.cmd
+```
+
+4. Open <http://127.0.0.1:3200>.
+
+The Windows launcher uses GemLogin at `127.0.0.1:1010` and CDP at `127.0.0.1:9222`. Override either value before starting if the VM uses another port:
+
+```powershell
+$env:GEMLOGIN_BASE = "http://127.0.0.1:1010"
+$env:GEMLOGIN_CDP_BASE = "http://127.0.0.1:9222"
+.\start-windows.cmd
+```
+
+Stop the dashboard with `Ctrl+C`.
 
 ## Quick start
 
@@ -18,7 +45,6 @@ The dashboard is bound to `127.0.0.1:3200` by default. It is intentionally local
 
 ```dotenv
 GEMLOGIN_BASE=http://host.docker.internal:1010
-GEMLOGIN_CDP_BASE=http://host.docker.internal:9223
 GEMLOGIN_CLOUD_BASE=https://app.gemlogin.io
 GEMLOGIN_CLOUD_DEVICE_ID=
 GEMLOGIN_CLOUD_SOFT_ID=1
@@ -47,7 +73,7 @@ sh tests/docker-smoke.sh
 
 GemLogin's REST API creates and deletes profiles in its database, but its Electron profile list keeps an in-memory store. New profiles and deleted profiles are not visible to the workflow runner until GemLogin's **Refresh profile list** action is triggered.
 
-For new-profile runs, Gem-Run triggers that action automatically through the GemLogin renderer using Chrome DevTools Protocol (CDP). GemLogin must be started with a DevTools port, and the included bridge makes that loopback port reachable from Docker.
+For new-profile runs, Gem-Run triggers that action automatically through the GemLogin renderer using Chrome DevTools Protocol (CDP). GemLogin must be started with a DevTools port. Docker runs the included bridge automatically; no host Node.js process is required.
 
 Start GemLogin with:
 
@@ -55,22 +81,14 @@ Start GemLogin with:
 --remote-debugging-port=9222
 ```
 
-Then run the bridge in a host terminal:
+Then start Docker. Compose starts the bridge and waits until GemLogin's CDP endpoint is reachable:
 
 ```sh
-GEMLOGIN_CDP_BRIDGE_HOST=0.0.0.0 node scripts/gemlogin-cdp-bridge.mjs
+docker compose up -d --build
+docker compose ps
 ```
 
-Finally start Docker with `GEMLOGIN_CDP_BASE=http://host.docker.internal:9223` in `.env`. The bridge has no authentication; run it only on a trusted machine and do not expose port `9223` to the public internet.
-
-The bridge ports can be changed per machine:
-
-```sh
-GEMLOGIN_CDP_REMOTE_PORT=9222 \
-GEMLOGIN_CDP_BRIDGE_PORT=9223 \
-GEMLOGIN_CDP_BRIDGE_HOST=0.0.0.0 \
-node scripts/gemlogin-cdp-bridge.mjs
-```
+The bridge has no authentication and is only reachable inside the Docker network. Do not add a public port mapping for it.
 
 ## Using the dashboard
 

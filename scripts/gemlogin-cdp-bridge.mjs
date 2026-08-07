@@ -1,13 +1,19 @@
 import http from "node:http";
 import net from "node:net";
+import {pathToFileURL} from "node:url";
 
 const remoteHost = process.env.GEMLOGIN_CDP_REMOTE_HOST || "127.0.0.1";
 const remotePort = Number(process.env.GEMLOGIN_CDP_REMOTE_PORT || 9222);
+const remoteHeaderHost = process.env.GEMLOGIN_CDP_REMOTE_HEADER_HOST || remoteHost;
 const bridgeHost = process.env.GEMLOGIN_CDP_BRIDGE_HOST || "127.0.0.1";
 const bridgePort = Number(process.env.GEMLOGIN_CDP_BRIDGE_PORT || 9223);
 
+export function makeUpstreamHeaders(headers, headerHost, port) {
+  return {...headers, host: `${headerHost}:${port}`};
+}
+
 function upstreamHeaders(headers) {
-  return {...headers, host: `${remoteHost}:${remotePort}`};
+  return makeUpstreamHeaders(headers, remoteHeaderHost, remotePort);
 }
 
 const server = http.createServer((request, response) => {
@@ -35,6 +41,8 @@ server.on("upgrade", (request, client) => {
   upstream.on("error", () => client.destroy());
 });
 
-server.listen(bridgePort, bridgeHost, () => {
-  console.log(`GemLogin CDP bridge listening on ${bridgeHost}:${bridgePort}`);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  server.listen(bridgePort, bridgeHost, () => {
+    console.log(`GemLogin CDP bridge listening on ${bridgeHost}:${bridgePort}`);
+  });
+}
