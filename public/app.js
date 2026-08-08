@@ -221,7 +221,7 @@ function renderSchedules(schedules) {
     history.addEventListener("toggle", async () => { if (!history.open || historyList.childElementCount) return; try { const runs = await api(`schedules/${schedule.id}/runs`); historyList.replaceChildren(...runs.map((run) => Object.assign(document.createElement("li"), {textContent: `#${run.id} · ${run.status} · ${run.actual_profile_count || 1} profiles · cleanup ${run.cleanup_status || "n/a"}`}))); } catch (cause) { setError(cause.message); } });
     const remove = Object.assign(document.createElement("button"), {type: "button", textContent: "Delete"});
     remove.onclick = async () => { if (!confirm(`Delete schedule “${schedule.name}”?`)) return; try { await api(`schedules/${schedule.id}`, {method: "DELETE"}); await loadSchedules(); } catch (cause) { setError(cause.message); } };
-    actions.append(toggle, runNow, history, remove); row.append(summary, actions); return row;
+    actions.append(toggle, runNow, remove); row.append(summary, history, actions); return row;
   }));
 }
 async function loadProxies() {

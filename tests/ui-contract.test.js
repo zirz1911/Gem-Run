@@ -37,6 +37,8 @@ test("dashboard exposes the required panels without cloud credential names", asy
   const styles = await readFile(new URL("public/styles.css", root), "utf8");
   assert.match(styles, /\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
   assert.match(styles, /\.history-panel\s*\{\s*grid-column:\s*span 4;\s*grid-row:\s*1;/);
+  assert.match(styles, /\.schedule-history\s*\{[^}]*max-height:\s*210px;[^}]*overflow-y:\s*auto;/);
+  assert.match(styles, /\.schedule-actions button\s*\{[^}]*height:\s*32px;/);
   assert.match(script, /repeat_count/);
   assert.match(script, /max_concurrency/);
   assert.match(script, /cannot exceed Maximum profiles/);
