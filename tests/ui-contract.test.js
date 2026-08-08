@@ -10,7 +10,7 @@ test("dashboard exposes the required panels without cloud credential names", asy
     readFile(new URL("public/app.js", root), "utf8")
   ]);
 
-  for (const panel of ["Run Workflow", "Profiles", "Proxy Pool", "Run History"]) {
+  for (const panel of ["Run Workflow", "Scheduled Profiles", "Profiles", "Proxy Pool", "Run History"]) {
     assert.match(html, new RegExp(`<h2[^>]*>${panel}</h2>`));
   }
   assert.doesNotMatch(script, /GEMLOGIN_CLOUD_(?:DEVICE_ID|SOFT_ID|TOKEN)/);
@@ -24,6 +24,11 @@ test("dashboard exposes the required panels without cloud credential names", asy
   assert.match(html, /name="close_browser"/);
   assert.match(html, /name="delete_profile"/);
   assert.match(html, /id="run-cancel"/);
+  assert.match(html, /id="schedule-form"/);
+  assert.match(html, /name="profile_count_mode"/);
+  assert.match(html, /id="schedules"/);
+  assert.match(script, /schedules\/\$\{schedule\.id\}\/runs/);
+  assert.match(script, /paused by Manual run/);
   assert.match(await readFile(new URL("public/styles.css", root), "utf8"), /\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
   assert.match(script, /repeat_count/);
   assert.match(script, /max_concurrency/);

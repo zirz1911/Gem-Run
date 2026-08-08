@@ -75,7 +75,7 @@ export class RunService {
     if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 10) throw new Error("max_concurrency must be between 1 and 10");
   }
 
-  async start(input) {
+  async start(input, source = {}) {
     this.validate(input);
     if (this.runStore.findActive()) throw new Error("an active run already exists");
     const repeatCount = Number(input.repeat_count ?? 1);
@@ -83,13 +83,17 @@ export class RunService {
     const deleteProfile = input.delete_profile ?? input.cleanup_requested ?? false;
     const maxConcurrency = Math.min(Number(input.max_concurrency ?? (executionMode === "parallel" ? 2 : 1)), repeatCount);
     const batchId = repeatCount > 1 ? randomUUID() : null;
+    const scheduleExecutionId = source.source === "schedule" ? (source.scheduleExecutionId ?? randomUUID()) : null;
     const assignedProxies = this.assignProxies(input, repeatCount);
     const runs = Array.from({length: repeatCount}, (_, index) => this.runStore.create({
       workflow_id: String(input.workflow_id), workflow_name: input.workflow_name ?? null,
       profile_mode: input.profile_mode, profile_id: input.profile_mode === "existing" ? String(input.profile_id) : null,
       proxy_id: assignedProxies[index]?.id ?? null, cleanup_requested: Boolean(deleteProfile),
       close_browser: Boolean(input.close_browser ?? input.cleanup_requested ?? false), delete_profile: Boolean(deleteProfile), status: "queued",
-      started_at: timestamp(this.clock), cleanup_status: deleteProfile ? "pending" : "not_requested",
+      started_at: timestamp(this.clock), cleanup_status: deleteProfile ? "pending" : "not_requested", source: source.source ?? "manual",
+      schedule_id: source.scheduleId ?? null, schedule_name: source.scheduleName ?? null,
+      configured_profile_count: source.configuredProfileCount ?? null, profile_count_mode: source.profileCountMode ?? null,
+      actual_profile_count: source.actualProfileCount ?? (source.source === "schedule" ? repeatCount : null), schedule_execution_id: scheduleExecutionId,
       batch_id: batchId, batch_index: batchId ? index + 1 : null, batch_total: batchId ? repeatCount : null
     }));
     const task = this.executeBatch(runs, input, assignedProxies, executionMode, maxConcurrency).catch(() => {}).finally(() => runs.forEach(({id}) => this.cancelled.delete(String(id))));

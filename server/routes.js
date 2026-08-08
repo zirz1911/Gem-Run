@@ -1,5 +1,6 @@
 import express from "express";
 import {parseProxy} from "./proxy-store.js";
+import {validateScheduleInput} from "./schedule.js";
 
 const invalidRunRequests = new Set([
   "workflow_id is required", "profile_mode must be existing or new", "profile_id is required",
@@ -37,12 +38,15 @@ function safeWorkflow(workflow) {
 }
 function safeRun(run) {
   const batch = run.batch_id ? {batch_id: run.batch_id, batch_index: run.batch_index, batch_total: run.batch_total} : {};
+  const source = run.source === "schedule" || run.schedule_id != null ? {source: run.source ?? "manual", schedule_id: run.schedule_id ?? null, schedule_name: run.schedule_name ?? null,
+    configured_profile_count: run.configured_profile_count ?? null, profile_count_mode: run.profile_count_mode ?? null, actual_profile_count: run.actual_profile_count ?? null} : {};
   return {id: run.id, workflow_id: run.workflow_id, workflow_name: run.workflow_name ?? null, profile_mode: run.profile_mode,
     profile_id: run.profile_id ?? null, created_profile_id: run.created_profile_id ?? null, proxy_id: run.proxy_id ?? null,
     cleanup_requested: Boolean(run.cleanup_requested), close_browser: Boolean(run.close_browser ?? run.cleanup_requested), delete_profile: Boolean(run.delete_profile ?? run.cleanup_requested), status: run.status, error_message: run.error_message ?? null,
-    cleanup_status: run.cleanup_status ?? null, created_at: run.created_at ?? null, started_at: run.started_at ?? null, finished_at: run.finished_at ?? null, ...batch};
+    cleanup_status: run.cleanup_status ?? null, created_at: run.created_at ?? null, started_at: run.started_at ?? null, finished_at: run.finished_at ?? null, ...source, ...batch};
 }
 function safeBatch(batch) { return {batch_id: batch.batch_id, execution_mode: batch.execution_mode, max_concurrency: batch.max_concurrency, runs: batch.runs.map(safeRun)}; }
+function safeSchedule(schedule) { return schedule ? {...schedule, weekdays: [...(schedule.weekdays || [])]} : null; }
 function safeGroup(group) { return {id: group.id ?? group.group_id, name: group.name ?? group.group_name ?? null}; }
 function safeSettings(client) {
   return {cloud: {device_id: Boolean(client?.cloudDeviceId), soft_id: Boolean(client?.cloudSoftId), token: Boolean(client?.cloudToken)}};
@@ -61,10 +65,27 @@ function validRunInput(input) {
   if (Object.hasOwn(input, "parameter") && (!input.parameter || typeof input.parameter !== "object" || Array.isArray(input.parameter))) throw new Error("invalid run input");
   return input;
 }
+function validScheduledRun(input, runService) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("invalid schedule run");
+  const run = {...input};
+  if (run.profile_mode === "new") {
+    const count = Number(run.profile_count);
+    if (!Number.isInteger(count) || count < 1 || count > 100) throw new Error("profile_count must be between 1 and 100");
+    if (!['fixed', 'random'].includes(run.profile_count_mode ?? "fixed")) throw new Error("profile_count_mode is invalid");
+    run.profile_count = count;
+    run.profile_count_mode = run.profile_count_mode ?? "fixed";
+    run.repeat_count = count;
+    run.execution_mode = run.execution_mode ?? "sequential";
+    run.max_concurrency = run.max_concurrency ?? 1;
+  } else if (run.profile_count !== undefined || run.profile_count_mode !== undefined) throw new Error("profile count is only available for new profiles");
+  validRunInput(run);
+  runService.validate(run);
+  return run;
+}
 function unavailable(response) { return response.status(503).json({error: "GemLogin unavailable", code: "gemlogin_unavailable"}); }
 function proxyById(proxyStore, id) { return proxyStore.list().find((proxy) => String(proxy.id) === String(id)); }
 
-export function createRoutes({gemloginClient, proxyStore, runStore, runService, settingsStore}) {
+export function createRoutes({gemloginClient, proxyStore, runStore, runService, settingsStore, scheduleStore = null, scheduler = null}) {
   const router = express.Router();
   const gemlogin = (method, map) => async (_request, response) => {
     if (!gemloginClient) return unavailable(response);
@@ -149,5 +170,50 @@ export function createRoutes({gemloginClient, proxyStore, runStore, runService, 
       return response.status(500).json({error: "Unable to start run"});
     }
   });
+  router.get("/api/schedules", (_request, response) => response.json(scheduleStore?.list?.().map(safeSchedule) ?? []));
+  router.get("/api/schedules/:id/runs", (request, response) => {
+    if (!scheduleStore?.get(request.params.id)) return response.status(404).json({error: "Schedule not found"});
+    return response.json((runStore.listBySchedule?.(request.params.id) ?? []).map(safeRun));
+  });
+  router.post("/api/schedules", (request, response) => {
+    if (!scheduleStore || !runService) return response.status(503).json({error: "Schedule service unavailable"});
+    try {
+      const body = request.body ?? {};
+      const run = validScheduledRun(body.run, runService);
+      const schedule = {name: body.name, enabled: body.enabled, timezone: body.timezone, type: body.type, date: body.date, time: body.time, weekdays: body.weekdays, run};
+      validateScheduleInput(schedule);
+      return response.status(201).json(safeSchedule(scheduleStore.create(schedule)));
+    } catch { return response.status(400).json({error: "Invalid schedule request"}); }
+  });
+  router.patch("/api/schedules/:id", (request, response) => {
+    if (!scheduleStore || !runService) return response.status(503).json({error: "Schedule service unavailable"});
+    const existing = scheduleStore.getWithPayload(request.params.id);
+    if (!existing) return response.status(404).json({error: "Schedule not found"});
+    try {
+      const body = request.body ?? {};
+      const patch = {...body};
+      if (body.run) patch.run = validScheduledRun(body.run, runService);
+      validateScheduleInput({name: existing.name, enabled: existing.enabled, timezone: existing.timezone, type: existing.schedule_type, date: existing.run_date, time: existing.run_time, weekdays: existing.weekdays, ...patch});
+      return response.json(safeSchedule(scheduleStore.update(request.params.id, patch)));
+    } catch { return response.status(400).json({error: "Invalid schedule request"}); }
+  });
+  router.post("/api/schedules/:id/enable", (request, response) => {
+    const updated = scheduleStore?.setEnabled(request.params.id, true);
+    return updated ? response.json(safeSchedule(updated)) : response.status(404).json({error: "Schedule not found"});
+  });
+  router.post("/api/schedules/:id/disable", (request, response) => {
+    const updated = scheduleStore?.setEnabled(request.params.id, false);
+    return updated ? response.json(safeSchedule(updated)) : response.status(404).json({error: "Schedule not found"});
+  });
+  router.post("/api/schedules/:id/run-now", async (request, response) => {
+    if (!scheduler) return response.status(503).json({error: "Schedule service unavailable"});
+    try { return response.status(202).json(safeSchedule(await scheduler.runNow(request.params.id))); }
+    catch (error) {
+      if (error?.message === "an active run already exists" || error?.message === "an active scheduled run exists") return response.status(409).json({error: "An active run already exists"});
+      if (error?.message === "schedule is not active or not found") return response.status(409).json({error: "Schedule is not active"});
+      return response.status(500).json({error: "Unable to run schedule"});
+    }
+  });
+  router.delete("/api/schedules/:id", (request, response) => scheduleStore?.remove(request.params.id) ? response.status(204).end() : response.status(404).json({error: "Schedule not found"}));
   return router;
 }

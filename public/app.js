@@ -4,8 +4,9 @@ let error;
 let runForm;
 let proxyForm;
 let settingsForm;
+let scheduleForm;
 const activeStatuses = new Set(["queued", "submitted", "running", "cancelling"]);
-let data = {workflows: [], groups: [], profiles: [], proxies: [], activeRun: null};
+let data = {workflows: [], groups: [], profiles: [], proxies: [], schedules: [], activeRun: null};
 let selectedProxyIds = new Set();
 let poller;
 
@@ -67,6 +68,14 @@ function syncRunForm() {
   $("#manual-proxy").hidden = !isNew || proxyMode() !== "manual";
   runForm.elements.raw_proxy.required = isNew && proxyMode() === "manual";
   $("#parallel-options").hidden = !isNew || runForm.elements.execution_mode.value !== "parallel";
+}
+function syncScheduleForm() {
+  const type = scheduleForm?.elements.type.value;
+  if (!scheduleForm) return;
+  $("#schedule-once-fields").hidden = type !== "once";
+  $("#schedule-weekly-fields").hidden = type !== "weekly";
+  scheduleForm.elements.date.required = type === "once";
+  for (const checkbox of scheduleForm.querySelectorAll("[name='weekday']")) checkbox.required = false;
 }
 function renderParameters() {
   const workflow = data.workflows.find((item) => String(item.id) === $("#workflow").value);
@@ -168,6 +177,32 @@ function renderRuns(runs) {
   $("#runs").replaceChildren(...runs.map((run) => Object.assign(document.createElement("li"), {textContent: `#${run.id}${run.batch_id ? ` · batch ${run.batch_index}/${run.batch_total}` : ""} · ${run.workflow_name || run.workflow_id} · ${run.status}${run.cleanup_status ? ` · cleanup: ${run.cleanup_status}` : ""}${run.error_message ? ` · ${run.error_message}` : ""}`})));
   if (data.activeRun) poll(data.activeRun.id);
 }
+function renderSchedules(schedules) {
+  data.schedules = schedules;
+  const list = $("#schedules");
+  if (!list) return;
+  list.replaceChildren(...schedules.map((schedule) => {
+    const row = document.createElement("li");
+    const summary = Object.assign(document.createElement("div"), {className: "schedule-summary"});
+    const state = schedule.enabled ? "ACTIVE" : "DEACTIVE";
+    summary.append(Object.assign(document.createElement("strong"), {textContent: `${schedule.name} · ${state}`}));
+    const pauseNote = data.activeRun?.source === "manual" ? " · paused by Manual run" : "";
+    summary.append(Object.assign(document.createElement("small"), {textContent: `${schedule.type} ${schedule.time} ${schedule.timezone} · next: ${schedule.next_run_at || "completed"} · last: ${schedule.last_status || "never"}${pauseNote}`}));
+    const actions = Object.assign(document.createElement("span"), {className: "schedule-actions"});
+    const toggle = Object.assign(document.createElement("button"), {type: "button", textContent: schedule.enabled ? "Deactive" : "Active"});
+    toggle.onclick = async () => { try { await api(`schedules/${schedule.id}/${schedule.enabled ? "disable" : "enable"}`, {method: "POST"}); await loadSchedules(); } catch (cause) { setError(cause.message); } };
+    const runNow = Object.assign(document.createElement("button"), {type: "button", textContent: "Run now", disabled: !schedule.enabled});
+    runNow.onclick = async () => { try { await api(`schedules/${schedule.id}/run-now`, {method: "POST"}); status.textContent = `Schedule #${schedule.id} started.`; await loadSchedules(); await loadRuns(); } catch (cause) { setError(cause.message); } };
+    const history = Object.assign(document.createElement("details"), {className: "schedule-history"});
+    const historySummary = Object.assign(document.createElement("summary"), {textContent: "History"});
+    const historyList = Object.assign(document.createElement("ol"), {className: "data-list"});
+    history.append(historySummary, historyList);
+    history.addEventListener("toggle", async () => { if (!history.open || historyList.childElementCount) return; try { const runs = await api(`schedules/${schedule.id}/runs`); historyList.replaceChildren(...runs.map((run) => Object.assign(document.createElement("li"), {textContent: `#${run.id} · ${run.status} · ${run.actual_profile_count || 1} profiles · cleanup ${run.cleanup_status || "n/a"}`}))); } catch (cause) { setError(cause.message); } });
+    const remove = Object.assign(document.createElement("button"), {type: "button", textContent: "Delete"});
+    remove.onclick = async () => { if (!confirm(`Delete schedule “${schedule.name}”?`)) return; try { await api(`schedules/${schedule.id}`, {method: "DELETE"}); await loadSchedules(); } catch (cause) { setError(cause.message); } };
+    actions.append(toggle, runNow, history, remove); row.append(summary, actions); return row;
+  }));
+}
 async function loadProxies() {
   try { data.proxies = await api("proxies"); renderProxies(); }
   catch { setError("Some dashboard data could not be loaded."); }
@@ -175,6 +210,10 @@ async function loadProxies() {
 async function loadRuns() {
   try { renderRuns(await api("runs")); }
   catch { setError("Run history could not be loaded."); }
+}
+async function loadSchedules() {
+  try { renderSchedules(await api("schedules")); }
+  catch { setError("Schedule data could not be loaded."); }
 }
 async function loadProfiles() {
   try { data.profiles = await api("gemlogin/profiles"); option($("#profile"), data.profiles, "Choose a profile"); renderProfiles(); }
@@ -186,13 +225,13 @@ async function optionalLoad(path, fallback) {
 }
 async function load() {
   const history = loadRuns();
-  const [health, workflows, groups, profiles, settings] = await Promise.all([optionalLoad("health", null), optionalLoad("gemlogin/workflows", []), optionalLoad("gemlogin/groups", []), optionalLoad("gemlogin/profiles", []), optionalLoad("settings", null)]);
-  data = {...data, workflows, groups, profiles};
+  const [health, workflows, groups, profiles, settings, schedules] = await Promise.all([optionalLoad("health", null), optionalLoad("gemlogin/workflows", []), optionalLoad("gemlogin/groups", []), optionalLoad("gemlogin/profiles", []), optionalLoad("settings", null), optionalLoad("schedules", [])]);
+  data = {...data, workflows, groups, profiles, schedules};
   status.dataset.state = health?.app === "ok" ? "ready" : "error";
   status.textContent = health?.app === "ok" ? `Service ready; GemLogin ${health.gemlogin}.` : "Service unavailable.";
   renderSettings(settings);
-  option($("#workflow"), workflows, "Choose a workflow"); option($("#group"), groups, "Choose a group"); option($("#profile"), profiles, "Choose a profile");
-  renderProfiles(); renderParameters(); await Promise.all([loadProxies(), history]);
+  option($("#workflow"), workflows, "Choose a workflow"); option($("#group"), groups, "Choose a group"); option($("#profile"), profiles, "Choose a profile"); option($("#schedule-workflow"), workflows, "Choose a workflow"); option($("#schedule-group"), groups, "Choose a group");
+  renderProfiles(); renderParameters(); renderSchedules(schedules); await Promise.all([loadProxies(), history]);
 }
 async function updateProxy(id, payload, raw) {
   try { await api(`proxies/${id}`, {method: "PATCH", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); if (raw) raw.value = ""; await loadProxies(); }
@@ -219,15 +258,17 @@ function poll(id) {
       if (run.created_profile_id && !data.profiles.some((profile) => String(profile.id) === String(run.created_profile_id))) await loadProfiles();
       const runs = await api("runs");
       renderRuns(runs);
+      await loadSchedules();
       if (!active(run)) await loadProfiles();
     }
     catch (cause) { setError(cause.message); poll(id); }
   }, 2000);
 }
 function initialize() {
-  status = $("#status"); error = $("#error"); runForm = $("#run-form"); proxyForm = $("#proxy-form"); settingsForm = $("#settings-form");
+  status = $("#status"); error = $("#error"); runForm = $("#run-form"); proxyForm = $("#proxy-form"); settingsForm = $("#settings-form"); scheduleForm = $("#schedule-form");
   syncRunForm();
   runForm.addEventListener("change", (event) => { if (["profile_mode", "proxy_mode", "execution_mode"].includes(event.target.name)) syncRunForm(); if (event.target.id === "workflow") renderParameters(); });
+  scheduleForm.addEventListener("change", (event) => { if (event.target.name === "type") syncScheduleForm(); });
   runForm.addEventListener("submit", async (event) => {
   event.preventDefault(); setError("");
   const form = new FormData(runForm); const workflow = data.workflows.find((item) => String(item.id) === form.get("workflow_id"));
@@ -252,8 +293,18 @@ function initialize() {
     proxyForm.reset(); proxyForm.elements.enabled.checked = true; updateProxyCount(); await loadProxies();
   } catch (cause) { setError(`Saved ${saved} of ${proxies.length} proxies. ${cause.message}`); await loadProxies(); }
   });
+  scheduleForm.addEventListener("submit", async (event) => {
+    event.preventDefault(); setError("");
+    const form = new FormData(scheduleForm); const workflow = data.workflows.find((item) => String(item.id) === form.get("workflow_id"));
+    const type = form.get("type");
+    const run = {workflow_id: form.get("workflow_id"), workflow_name: workflow?.name || null, profile_mode: "new", profile_name: form.get("profile_name"), group_id: form.get("group_id"), proxy_mode: "none", profile_count: Number(form.get("profile_count")), profile_count_mode: form.get("profile_count_mode"), delete_profile: form.has("delete_profile"), close_browser: form.has("close_browser"), parameter: {}};
+    const payload = {name: form.get("name"), timezone: form.get("timezone"), type, time: form.get("time"), ...(type === "once" ? {date: form.get("date")} : {}), ...(type === "weekly" ? {weekdays: form.getAll("weekday").map(Number)} : {}), run};
+    try { await api("schedules", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); scheduleForm.reset(); scheduleForm.elements.timezone.value = "Asia/Bangkok"; scheduleForm.elements.close_browser.checked = true; syncScheduleForm(); status.textContent = "Schedule saved."; await loadSchedules(); }
+    catch (cause) { setError(cause.message); }
+  });
   proxyForm.elements.raw_proxy.addEventListener("input", updateProxyCount);
   updateProxyCount();
+  syncScheduleForm();
   $("#proxy-select-all").addEventListener("change", (event) => {
     selectedProxyIds = event.target.checked ? new Set(data.proxies.map((proxy) => String(proxy.id))) : new Set();
     renderProxies();

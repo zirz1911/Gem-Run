@@ -78,6 +78,34 @@
           </form>
         </section>
 
+        <section class="panel schedule-panel" aria-labelledby="schedule-heading">
+          <div class="panel-heading">
+            <div><p class="eyebrow">02 / SCHEDULE</p><h2 id="schedule-heading">Scheduled Profiles</h2></div>
+            <span class="panel-code">AUTO RUN</span>
+          </div>
+          <p class="section-intro">Choose a Workflow, create a fixed or random number of new profiles, and let Gem-Run repeat it automatically.</p>
+          <form id="schedule-form">
+            <div class="form-grid">
+              <label class="field"><span>Schedule name</span><input name="name" required autocomplete="off" placeholder="Morning upload"></label>
+              <label class="field"><span>Workflow</span><select name="workflow_id" id="schedule-workflow" required></select></label>
+              <label class="field"><span>Profile name</span><input name="profile_name" required autocomplete="off" placeholder="Scheduled profile"></label>
+              <label class="field"><span>Group</span><select name="group_id" id="schedule-group" required></select></label>
+              <label class="field"><span>Maximum profiles</span><input name="profile_count" type="number" min="1" max="100" value="1" required></label>
+              <label class="field"><span>Timezone</span><input name="timezone" value="Asia/Bangkok" required></label>
+              <label class="field"><span>Time</span><input name="time" type="time" value="09:00" required></label>
+              <label class="field"><span>Frequency</span><select name="type"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="once">Once</option></select></label>
+            </div>
+            <div class="form-grid">
+              <fieldset class="choice-fieldset"><legend>Profile count</legend><div class="choice-grid"><label class="choice-card compact-choice"><input type="radio" name="profile_count_mode" value="fixed" checked><span><strong>Fixed</strong><small>Always create the maximum.</small></span></label><label class="choice-card compact-choice"><input type="radio" name="profile_count_mode" value="random"><span><strong>Random</strong><small>Choose 1 to maximum each run.</small></span></label></div></fieldset>
+              <fieldset class="choice-fieldset"><legend>After workflow</legend><label class="check-line"><input name="delete_profile" type="checkbox"><span>Delete temporary profiles</span></label><label class="check-line"><input name="close_browser" type="checkbox" checked><span>Close browser</span></label></fieldset>
+            </div>
+            <div class="form-grid schedule-extra-fields" id="schedule-once-fields" hidden><label class="field"><span>Date</span><input name="date" type="date"></label></div>
+            <fieldset id="schedule-weekly-fields" class="choice-fieldset" hidden><legend>Weekdays</legend><div class="choice-grid choice-grid-three"><label class="check-line"><input name="weekday" type="checkbox" value="1"><span>Monday</span></label><label class="check-line"><input name="weekday" type="checkbox" value="2"><span>Tuesday</span></label><label class="check-line"><input name="weekday" type="checkbox" value="3"><span>Wednesday</span></label><label class="check-line"><input name="weekday" type="checkbox" value="4"><span>Thursday</span></label><label class="check-line"><input name="weekday" type="checkbox" value="5"><span>Friday</span></label><label class="check-line"><input name="weekday" type="checkbox" value="6"><span>Saturday</span></label><label class="check-line"><input name="weekday" type="checkbox" value="0"><span>Sunday</span></label></div></fieldset>
+            <div class="form-actions"><p class="form-note"><span class="accent-mark">●</span> Manual runs pause Schedule dispatch</p><button class="primary-button" type="submit">Save Schedule <span aria-hidden="true">↗</span></button></div>
+          </form>
+          <ol id="schedules" class="data-list schedule-list" aria-live="polite"></ol>
+        </section>
+
         <section class="panel profiles-panel" aria-labelledby="profiles-heading">
           <div class="panel-heading">
             <div><p class="eyebrow">02 / IDENTITIES</p><h2 id="profiles-heading">Profiles</h2></div>

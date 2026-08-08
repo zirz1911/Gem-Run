@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {createApp} from "../server/app.js";
+import {randomBytes} from "node:crypto";
+import {openDatabase} from "../server/database.js";
+import {ScheduleStore} from "../server/schedule-store.js";
 
-function makeApp({client = {}, proxyStore = {}, runStore = {}, runService = {}, settingsStore = null} = {}) {
+function makeApp({client = {}, proxyStore = {}, runStore = {}, runService = {}, settingsStore = null, scheduleStore = null, scheduler = null} = {}) {
   return createApp({
     config: {}, gemloginClient: {
       status: async () => ({token: "cloud-secret"}),
@@ -18,7 +21,7 @@ function makeApp({client = {}, proxyStore = {}, runStore = {}, runService = {}, 
       ...proxyStore
     },
     runStore: {listRecent: () => [], get: () => null, ...runStore}, settingsStore,
-    runService: {start: async (input) => ({id: 1, ...input, status: "queued"}), get: () => null, ...runService}
+    runService: {start: async (input) => ({id: 1, ...input, status: "queued"}), validate: () => {}, get: () => null, ...runService}, scheduleStore, scheduler
   });
 }
 
@@ -152,4 +155,18 @@ test("GemLogin failures are unavailable and active runs conflict", async () => {
     method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({workflow_id: "wf-1", profile_mode: "existing", profile_id: 63, cleanup_requested: false})
   });
   assert.deepEqual(conflict, {status: 409, body: {error: "An active run already exists"}});
+});
+
+test("schedule routes create, toggle, and expose per-schedule history without payload secrets", async () => {
+  const db = openDatabase(":memory:");
+  const scheduleStore = new ScheduleStore(db, randomBytes(32), () => new Date("2026-08-08T00:00:00Z"));
+  const runStore = {listRecent: () => [], get: () => null, listBySchedule: () => [{id: 9, workflow_id: "wf-1", profile_mode: "new", status: "done", source: "schedule", schedule_id: 1, actual_profile_count: 3, cleanup_status: "done"}]};
+  const app = makeApp({scheduleStore, runStore});
+  const created = await request(app, "/api/schedules", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({name: "Morning", timezone: "Asia/Bangkok", type: "daily", time: "09:30", run: {workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "none", profile_count: 5, profile_count_mode: "random", delete_profile: true, close_browser: true, parameter: {token: "secret"}}})});
+  assert.equal(created.status, 201);
+  assert.equal(JSON.stringify(created.body).includes("secret"), false);
+  const disabled = await request(app, "/api/schedules/1/disable", {method: "POST"});
+  assert.equal(disabled.body.enabled, false);
+  const history = await request(app, "/api/schedules/1/runs");
+  assert.equal(history.body[0].actual_profile_count, 3);
 });

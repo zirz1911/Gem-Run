@@ -90,6 +90,14 @@ The bridge has no authentication and is only reachable inside the Docker network
 
 ## Using the dashboard
 
+### Scheduled profiles
+
+Use **Scheduled Profiles** to select a workflow and configure an automatic new-profile batch. Set the maximum number of profiles and choose **Fixed** or **Random**; Random selects a number from 1 through the maximum on each execution. Choose whether temporary profiles are deleted and whether browsers are closed after the workflow.
+
+Schedules have persistent **Active** and **Deactive** controls and per-schedule run history. A Manual run pauses schedule dispatch without changing the schedule's Active/Deactive state. After the Manual run finishes, due Active schedules resume automatically. Schedule data and encrypted payloads live in the `gem-run-data` volume.
+
+The scheduler polls every 15 seconds by default. Change `SCHEDULE_POLL_INTERVAL_SECONDS` in `.env` if needed.
+
 ### Existing profile
 
 Select an existing profile and a workflow, then run it. The existing-profile path uses the configured GemLogin cloud webhook.

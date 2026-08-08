@@ -1,7 +1,7 @@
 import {decryptSecret, encryptSecret} from "./crypto.js";
 
 const activeStatuses = ["queued", "submitted", "running", "cancelling"];
-const runColumns = new Set(["workflow_id", "workflow_name", "profile_mode", "profile_id", "created_profile_id", "proxy_id", "cleanup_requested", "close_browser", "delete_profile", "status", "remote_run_id", "error_message", "cleanup_status", "batch_id", "batch_index", "batch_total", "started_at", "finished_at"]);
+const runColumns = new Set(["workflow_id", "workflow_name", "profile_mode", "profile_id", "created_profile_id", "proxy_id", "cleanup_requested", "close_browser", "delete_profile", "status", "remote_run_id", "error_message", "cleanup_status", "batch_id", "batch_index", "batch_total", "source", "schedule_id", "schedule_name", "configured_profile_count", "profile_count_mode", "actual_profile_count", "schedule_execution_id", "started_at", "finished_at"]);
 
 function now() { return new Date().toISOString(); }
 
@@ -125,7 +125,10 @@ export class RunStore {
       cleanup_requested: input.cleanup_requested ? 1 : 0, status: input.status, remote_run_id: input.remote_run_id ?? null,
       close_browser: Number(Boolean(input.close_browser ?? input.cleanup_requested)), delete_profile: Number(Boolean(input.delete_profile ?? input.cleanup_requested)),
       error_message: input.error_message ?? null, cleanup_status: input.cleanup_status, batch_id: input.batch_id ?? null,
-      batch_index: input.batch_index ?? null, batch_total: input.batch_total ?? null, created_at: timestamp,
+      batch_index: input.batch_index ?? null, batch_total: input.batch_total ?? null, source: input.source ?? "manual", schedule_id: input.schedule_id ?? null,
+      schedule_name: input.schedule_name ?? null, configured_profile_count: input.configured_profile_count ?? null,
+      profile_count_mode: input.profile_count_mode ?? null, actual_profile_count: input.actual_profile_count ?? null,
+      schedule_execution_id: input.schedule_execution_id ?? null, created_at: timestamp,
       started_at: normalizeTimestamp(input.started_at), finished_at: normalizeTimestamp(input.finished_at)
     };
     const result = this.db.prepare(`INSERT INTO runs (${Object.keys(values).join(", ")}) VALUES (${Object.keys(values).map((key) => `@${key}`).join(", ")})`).run(values);
@@ -157,6 +160,14 @@ export class RunStore {
 
   listBatch(batchId) {
     return this.db.prepare("SELECT * FROM runs WHERE batch_id = ? ORDER BY batch_index").all(batchId).map(runRecord);
+  }
+
+  listBySchedule(scheduleId) {
+    return this.db.prepare("SELECT * FROM runs WHERE schedule_id = ? ORDER BY created_at DESC, id DESC").all(scheduleId).map(runRecord);
+  }
+
+  listByScheduleExecution(executionId) {
+    return this.db.prepare("SELECT * FROM runs WHERE schedule_execution_id = ? ORDER BY id").all(executionId).map(runRecord);
   }
 
   findRecoverable() {

@@ -53,6 +53,7 @@ h1 span { color: var(--accent); }
 .dashboard-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; padding-top: 16px; }
 .panel { min-width: 0; padding: 24px; background: rgb(255 253 248 / 94%); border: 1px solid var(--line); border-radius: 3px; box-shadow: var(--shadow); }
 .run-panel { grid-column: span 8; }
+.schedule-panel { grid-column: 1 / -1; }
 .profiles-panel { grid-column: span 4; }
 .proxies-panel { grid-column: span 7; }
 .history-panel { grid-column: span 5; }
@@ -144,6 +145,13 @@ legend { padding: 0; }
 .proxy-actions button { min-height: 34px; padding: 6px 9px; font-size: .72rem; }
 .run-list li { align-items: flex-start; }
 .run-list li { overflow-wrap: anywhere; }
+.schedule-list { margin-top: 22px; border-top: 1px solid var(--line); }
+.schedule-list li { align-items: flex-start; }
+.schedule-summary { display: grid; gap: 4px; min-width: 0; }
+.schedule-summary strong { font-size: .84rem; }
+.schedule-summary small { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .68rem; }
+.schedule-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.schedule-actions button { min-height: 32px; padding: 6px 9px; font-size: .7rem; }
 .proxy-form { padding-bottom: 3px; }
 .proxy-form .form-actions { margin-top: 16px; padding-top: 13px; }
 
