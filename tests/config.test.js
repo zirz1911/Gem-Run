@@ -10,6 +10,10 @@ test("rejects invalid run timeout configuration", () => {
   assert.equal(loadConfig({}).gemloginBase, "http://127.0.0.1:1010");
   assert.equal(loadConfig({}).gemloginCdpBase, "http://127.0.0.1:9222");
   assert.equal(loadConfig({GEMLOGIN_CDP_BASE: "http://host:9223"}).gemloginCdpBase, "http://host:9223");
+  assert.equal(loadConfig({}).gemloginExecutionMode, "cloud");
+  assert.equal(loadConfig({GEMLOGIN_EXECUTION_MODE: "local"}).gemloginExecutionMode, "local");
+  assert.equal(loadConfig({GEMLOGIN_EXECUTION_MODE: "cloud"}).gemloginExecutionMode, "cloud");
+  assert.throws(() => loadConfig({GEMLOGIN_EXECUTION_MODE: "auto"}), /GEMLOGIN_EXECUTION_MODE must be local or cloud/);
   assert.equal(loadConfig({SCHEDULE_POLL_INTERVAL_SECONDS: "2.5"}).schedulePollIntervalSeconds, 2.5);
   assert.throws(() => loadConfig({SCHEDULE_POLL_INTERVAL_SECONDS: "0"}), /SCHEDULE_POLL_INTERVAL_SECONDS must be a finite positive number/);
 });

@@ -1,6 +1,15 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import {fileURLToPath} from "node:url";
 import {decideGemLoginStartup, gemLoginArguments, waitUntil} from "../scripts/ensure-gemlogin-windows.mjs";
+
+test("Windows launcher declares local execution and compose declares cloud execution", () => {
+  const windowsLauncher = readFileSync(fileURLToPath(new URL("../start-windows.cmd", import.meta.url)), "utf8");
+  const compose = readFileSync(fileURLToPath(new URL("../compose.yaml", import.meta.url)), "utf8");
+  assert.match(windowsLauncher, /if not defined GEMLOGIN_EXECUTION_MODE set "GEMLOGIN_EXECUTION_MODE=local"/);
+  assert.match(compose, /GEMLOGIN_EXECUTION_MODE:\s*cloud/);
+});
 
 test("Windows supervisor reuses GemLogin only when API and CDP are ready", () => {
   assert.equal(decideGemLoginStartup({apiReady: true, cdpReady: true, gemLoginRunning: true, status: {activeBrowsers: 0}}), "reuse");

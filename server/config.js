@@ -7,6 +7,10 @@ export function loadConfig(env) {
   if (!Number.isFinite(schedulePollIntervalSeconds) || schedulePollIntervalSeconds <= 0) {
     throw new Error("SCHEDULE_POLL_INTERVAL_SECONDS must be a finite positive number");
   }
+  const gemloginExecutionMode = env.GEMLOGIN_EXECUTION_MODE || "cloud";
+  if (!["local", "cloud"].includes(gemloginExecutionMode)) {
+    throw new Error("GEMLOGIN_EXECUTION_MODE must be local or cloud");
+  }
   return {
     gemloginBase: env.GEMLOGIN_BASE || "http://127.0.0.1:1010",
     gemloginCdpBase: env.GEMLOGIN_CDP_BASE || "http://127.0.0.1:9222",
@@ -17,6 +21,7 @@ export function loadConfig(env) {
     proxyEncryptionKey: env.PROXY_ENCRYPTION_KEY || "",
     runTimeoutSeconds,
     schedulePollIntervalSeconds,
+    gemloginExecutionMode,
     port: Number(env.PORT || 3200)
   };
 }
