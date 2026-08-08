@@ -162,7 +162,7 @@ test("refreshProfileList clicks GemLogin's real profile refresh control", async 
   assert.equal(messages[0].method, "Runtime.evaluate");
   assert.match(messages[0].params.expression, /Refresh profile list button not found/);
   assert.match(messages[0].params.expression, /querySelectorAll\('button,\[role="button"\]'\)/);
-  assert.match(messages[0].params.expression, /el-icon-refresh/);
+  assert.doesNotMatch(messages[0].params.expression, /reload/);
   assert.match(messages[0].params.expression, /setTimeout\(r,2000\)/);
 });
 
@@ -214,4 +214,9 @@ test("failed requests report a sanitized HTTP error", async () => {
     assert.equal(error.message.includes("secret"), false);
     return true;
   });
+});
+
+test("successful HTTP responses still reject GemLogin errors", async () => {
+  const {client} = makeClient({success: false, message: "Invalid type for parameter: keyword_file"});
+  await assert.rejects(client.executeLocal({profileId: 63, workflowId: "wf-1", parameter: {}, closeBrowser: false}), /Invalid type for parameter/);
 });

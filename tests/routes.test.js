@@ -121,6 +121,11 @@ test("workflow route masks sensitive defaults and drops upstream fields", async 
   assert.equal(JSON.stringify(body).includes("workflow-secret"), false);
 });
 
+test("workflow route exposes GemLogin defaultValue fields", async () => {
+  const {body} = await request(makeApp({client: {listWorkflows: async () => ({data: [{id: "wf-2", parameters: [{name: "path", defaultValue: "/tmp/input.txt"}, {name: "limit", defaultValue: 2}]}]})}}), "/api/gemlogin/workflows");
+  assert.deepEqual(body[0].parameters, [{name: "path", default: "/tmp/input.txt"}, {name: "limit", default: 2}]);
+});
+
 test("workflow route masks auth, key, bearer, header, and config defaults", async () => {
   const {body} = await request(makeApp({client: {listWorkflows: async () => ({data: [{id: "wf-2", parameters: [
     {name: "auth", default: "auth-secret"}, {name: "access_key", default: "access-secret"},

@@ -37,7 +37,7 @@ test("workflow form serialization preserves checked and unchecked booleans", asy
     {name: "parameter.enabled", type: "checkbox", checked: true, value: "on"},
     {name: "parameter.archive", type: "checkbox", checked: false, value: "on"},
     {name: "parameter.limit", type: "number", value: "2"}
-  ]), {enabled: true, archive: false, limit: "2"});
+  ]), {enabled: true, archive: false, limit: 2});
   assert.deepEqual(parseProxyLines(" http://one:1:u:p \n\nhttp://two:2:u:p\r\n"), ["http://one:1:u:p", "http://two:2:u:p"]);
 });
 

@@ -208,19 +208,24 @@ export class RunService {
         } else if (input.proxy_mode === "manual") {
           proxy = parseProxy(input.raw_proxy);
         }
-        const created = await this.runWithDeadline(deadline, (signal) => this.gemloginClient.createProfile({profile_name: profileName(input.profile_name, (run.batch_index ?? 1) - 1, run.batch_total ?? 1), group_id: String(input.group_id), ...(proxy ? {raw_proxy: proxyValue(proxy)} : {})}, {signal}), runId);
+        const created = await this.runWithDeadline(deadline, (signal) => this.gemloginClient.createProfile({
+          profile_name: profileName(input.profile_name, (run.batch_index ?? 1) - 1, run.batch_total ?? 1),
+          group_id: String(input.group_id),
+          ...(proxy ? {raw_proxy: proxyValue(proxy)} : {}),
+          os: {type: "macOS", version: "macos13"},
+          country: "Thailand"
+        }, {signal}), runId);
         currentProfileId = profileId(created);
         if (currentProfileId == null) throw new Error("profile creation failed");
         run = this.runStore.update(runId, {created_profile_id: String(currentProfileId)});
         await this.runWithDeadline(deadline, (signal) => this.gemloginClient.startProfile(currentProfileId, {signal}), runId);
         await this.runWithDeadline(deadline, (signal) => this.refreshProfileList({signal}), runId);
       }
-      const execute = run.profile_mode === "new" ? this.gemloginClient.executeLocal.bind(this.gemloginClient) : this.gemloginClient.executeCloud.bind(this.gemloginClient);
-      const submitted = await this.runWithDeadline(deadline, (signal) => execute({
+      const submitted = await this.runWithDeadline(deadline, (signal) => this.gemloginClient.executeCloud({
         profileId: currentProfileId, workflowId: run.workflow_id, parameter: input.parameter ?? {},
         closeBrowser: closeBrowserRequested(run) || (run.profile_mode === "new" && deleteProfileRequested(run))
       }, {signal}), runId);
-      run = this.runStore.update(runId, {status: "submitted", remote_run_id: run.profile_mode === "new" ? null : remoteRunId(submitted)});
+      run = this.runStore.update(runId, {status: "submitted", remote_run_id: remoteRunId(submitted)});
       let observedRunning = false;
       const startupDeadline = Math.min(deadline, new Date(timestamp(this.clock)).getTime() + 15000);
       while (true) {
@@ -238,7 +243,7 @@ export class RunService {
       }
     } catch (error) {
       return this.finish(runId, error instanceof RunCancelledError ? "cancelled" : error instanceof RunTimeoutError ? "timeout" : "failed",
-        error instanceof RunCancelledError ? "run cancelled" : error instanceof RunTimeoutError ? "workflow timed out" : "workflow execution failed", deadline);
+        error instanceof RunCancelledError ? "run cancelled" : error instanceof RunTimeoutError ? "workflow timed out" : error?.message || "workflow execution failed", deadline);
     }
   }
 

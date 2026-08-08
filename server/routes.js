@@ -31,7 +31,8 @@ function safeWorkflow(workflow) {
     parameters: items(workflow.parameters ?? workflow.params).map((parameter) => Object.fromEntries(Object.entries({
       name: parameter.name, type: parameter.type, required: parameter.required, description: parameter.description,
       options: Array.isArray(parameter.options) ? parameter.options : undefined,
-      ...(Object.hasOwn(parameter, "default") ? {default: sensitiveName.test(parameter.name) ? "***" : parameter.default} : {})
+      ...(Object.hasOwn(parameter, "default") || Object.hasOwn(parameter, "defaultValue")
+        ? {default: sensitiveName.test(parameter.name) ? "***" : (parameter.default ?? parameter.defaultValue)} : {})
     }).filter(([, field]) => field !== undefined)))};
 }
 function safeRun(run) {

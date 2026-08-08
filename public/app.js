@@ -10,7 +10,7 @@ let selectedProxyIds = new Set();
 let poller;
 
 export function serializeParameters(controls) {
-  return Object.fromEntries([...controls].map((control) => [control.name.slice(10), control.type === "checkbox" ? Boolean(control.checked) : control.value]));
+  return Object.fromEntries([...controls].map((control) => [control.name.slice(10), control.type === "checkbox" ? Boolean(control.checked) : control.type === "number" ? Number(control.value) : control.value]));
 }
 export function parseProxyLines(value) {
   return String(value ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
