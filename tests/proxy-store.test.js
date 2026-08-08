@@ -94,6 +94,23 @@ test("ProxyStore can reserve different enabled proxies for a batch", (t) => {
   assert.equal(picked.id, second.id);
 });
 
+test("ProxyStore uses every never-used enabled proxy before reusing one", (t) => {
+  const {proxyStore} = makeStores(t);
+  const proxies = [
+    proxyStore.create({label: "One", raw_proxy: "http://one.example:8000", enabled: true}),
+    proxyStore.create({label: "Two", raw_proxy: "http://two.example:8000", enabled: true}),
+    proxyStore.create({label: "Three", raw_proxy: "http://three.example:8000", enabled: true})
+  ];
+
+  const picked = [proxyStore.pickRandomEnabled(), proxyStore.pickRandomEnabled(), proxyStore.pickRandomEnabled()];
+  assert.equal(new Set(picked.map(({id}) => id)).size, proxies.length);
+  assert.deepEqual(new Set(picked.map(({id}) => id)), new Set(proxies.map(({id}) => id)));
+  assert.ok(picked.every(({id}) => proxyStore.list().find((proxy) => proxy.id === id)?.last_used_at));
+
+  const reused = proxyStore.pickRandomEnabled();
+  assert.ok(proxies.some(({id}) => id === reused.id));
+});
+
 test("RunStore creates, updates, finds active, and retains proxy references", (t) => {
   const {proxyStore, runStore} = makeStores(t);
   const proxy = proxyStore.create({label: "Primary", raw_proxy: "http://proxy.example:8080", enabled: true});
