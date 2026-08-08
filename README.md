@@ -24,6 +24,12 @@ The dashboard is bound to `127.0.0.1:3200` by default. It is intentionally local
 
 The Windows launcher opens GemLogin visibly with CDP enabled and leaves it running. If GemLogin is already ready, the launcher reuses it. If it is running without CDP and has no active profile browsers, the launcher restarts it automatically. It refuses to interrupt GemLogin when active browsers exist or status cannot be verified.
 
+`start-windows.cmd` defaults to **Local** workflow execution for both existing and new profiles. To explicitly select the runtime endpoint, set one of the accepted values before starting:
+
+```powershell
+$env:GEMLOGIN_EXECUTION_MODE = "local" # or "cloud"
+```
+
 The default executable is `%LOCALAPPDATA%\Programs\gemlogin\gemlogin.exe`; the local API is `127.0.0.1:1010` and CDP is `127.0.0.1:9222`. Override values before starting when another Windows account, installation path, or port is used:
 
 ```powershell
@@ -58,7 +64,9 @@ docker compose up -d --build
 ```
 
 4. Open <http://127.0.0.1:3200>.
-5. Open **Settings** and save the GemLogin cloud values if existing-profile runs will use the cloud webhook.
+5. Open **Settings** and save the GemLogin Cloud values.
+
+Docker Compose explicitly uses **Cloud** workflow execution for both existing and new profiles. It still requires the GemLogin Cloud settings above.
 
 Check the installation:
 
