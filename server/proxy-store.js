@@ -102,7 +102,8 @@ export class ProxyStore {
     const pick = this.db.transaction(() => {
       const excluded = [...new Set(excludedIds.map((id) => Number(id)).filter(Number.isInteger))];
       const placeholders = excluded.map(() => "?").join(", ");
-      const row = this.db.prepare(`SELECT * FROM proxies WHERE enabled = 1${placeholders ? ` AND id NOT IN (${placeholders})` : ""} ORDER BY RANDOM() LIMIT 1`).get(...excluded);
+      const row = this.db.prepare(`SELECT * FROM proxies WHERE enabled = 1${placeholders ? ` AND id NOT IN (${placeholders})` : ""}
+        ORDER BY CASE WHEN last_used_at IS NULL THEN 0 ELSE 1 END, last_used_at ASC, RANDOM() LIMIT 1`).get(...excluded);
       if (!row) return null;
       const timestamp = now();
       this.db.prepare("UPDATE proxies SET last_used_at = ?, updated_at = ? WHERE id = ?").run(timestamp, timestamp, row.id);
