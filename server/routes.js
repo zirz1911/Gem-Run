@@ -75,8 +75,11 @@ function validScheduledRun(input, runService) {
     run.profile_count = count;
     run.profile_count_mode = run.profile_count_mode ?? "fixed";
     run.repeat_count = count;
-    run.execution_mode = run.execution_mode ?? "sequential";
-    run.max_concurrency = run.max_concurrency ?? 1;
+    const maxConcurrency = Number(run.max_concurrency ?? 1);
+    if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 10) throw new Error("max_concurrency must be between 1 and 10");
+    if (maxConcurrency > count) throw new Error("max_concurrency cannot exceed profile_count");
+    run.max_concurrency = maxConcurrency;
+    run.execution_mode = run.execution_mode ?? (Number(run.max_concurrency) > 1 ? "parallel" : "sequential");
   } else if (run.profile_count !== undefined || run.profile_count_mode !== undefined) throw new Error("profile count is only available for new profiles");
   validRunInput(run);
   runService.validate(run);

@@ -90,11 +90,13 @@
               <label class="field"><span>Workflow</span><select name="workflow_id" id="schedule-workflow" required></select></label>
               <label class="field"><span>Profile name</span><input name="profile_name" required autocomplete="off" placeholder="Scheduled profile"></label>
               <label class="field"><span>Group</span><select name="group_id" id="schedule-group" required></select></label>
-              <label class="field"><span>Maximum profiles</span><input name="profile_count" type="number" min="1" max="100" value="1" required></label>
+              <label class="field schedule-batch-field"><span>Maximum profiles</span><input name="profile_count" type="number" min="1" max="100" value="1" required></label>
+              <label class="field schedule-batch-field"><span>Profiles at a time</span><input name="max_concurrency" type="number" min="1" max="10" value="1" required></label>
               <label class="field"><span>Timezone</span><input name="timezone" value="Asia/Bangkok" required></label>
               <label class="field"><span>Time</span><input name="time" type="time" value="09:00" required></label>
               <label class="field"><span>Frequency</span><select name="type"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="once">Once</option></select></label>
             </div>
+            <p id="schedule-concurrency-warning" class="schedule-concurrency-warning" role="status"></p>
             <div class="form-grid">
               <fieldset class="choice-fieldset"><legend>Profile count</legend><div class="choice-grid"><label class="choice-card compact-choice"><input type="radio" name="profile_count_mode" value="fixed" checked><span><strong>Fixed</strong><small>Always create the maximum.</small></span></label><label class="choice-card compact-choice"><input type="radio" name="profile_count_mode" value="random"><span><strong>Random</strong><small>Choose 1 to maximum each run.</small></span></label></div></fieldset>
               <fieldset class="choice-fieldset"><legend>After workflow</legend><label class="check-line"><input name="delete_profile" type="checkbox"><span>Delete temporary profiles</span></label><label class="check-line"><input name="close_browser" type="checkbox" checked><span>Close browser</span></label></fieldset>

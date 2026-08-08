@@ -77,6 +77,26 @@ function syncScheduleForm() {
   scheduleForm.elements.date.required = type === "once";
   for (const checkbox of scheduleForm.querySelectorAll("[name='weekday']")) checkbox.required = false;
 }
+function syncScheduleConcurrency() {
+  if (!scheduleForm) return;
+  const profileCount = Number(scheduleForm.elements.profile_count.value || 0);
+  const concurrency = Number(scheduleForm.elements.max_concurrency.value || 0);
+  const input = scheduleForm.elements.max_concurrency;
+  const warning = $("#schedule-concurrency-warning");
+  input.max = String(Math.min(10, Math.max(1, profileCount)));
+  if (profileCount > 0 && concurrency > profileCount) {
+    input.setCustomValidity("Profiles at a time cannot exceed Maximum profiles.");
+    warning.textContent = `Warning: Profiles at a time cannot exceed Maximum profiles (${profileCount}).`;
+    warning.dataset.state = "error";
+    return;
+  }
+  input.setCustomValidity("");
+  warning.dataset.state = "notice";
+  const finalRound = profileCount % concurrency;
+  warning.textContent = profileCount > 0 && concurrency > 0
+    ? `Creates ${profileCount} profile${profileCount === 1 ? "" : "s"} total — ${concurrency} at a time${finalRound ? `, then ${finalRound} in the final round` : ""}. It will never create more than ${profileCount}.`
+    : "Do not exceed Maximum profiles. The final round may contain fewer profiles, and no extra profiles will be created.";
+}
 function renderParameters(target = "#parameters", workflowSelector = "#workflow") {
   const workflow = data.workflows.find((item) => String(item.id) === $(workflowSelector).value);
   const fields = (workflow?.parameters || []).map((parameter) => {
@@ -269,7 +289,8 @@ function initialize() {
   status = $("#status"); error = $("#error"); runForm = $("#run-form"); proxyForm = $("#proxy-form"); settingsForm = $("#settings-form"); scheduleForm = $("#schedule-form");
   syncRunForm();
   runForm.addEventListener("change", (event) => { if (["profile_mode", "proxy_mode", "execution_mode"].includes(event.target.name)) syncRunForm(); if (event.target.id === "workflow") renderParameters(); });
-  scheduleForm.addEventListener("change", (event) => { if (event.target.name === "type") syncScheduleForm(); if (event.target.id === "schedule-workflow") renderScheduleParameters(); });
+  scheduleForm.addEventListener("change", (event) => { if (event.target.name === "type") syncScheduleForm(); if (["profile_count", "max_concurrency"].includes(event.target.name)) syncScheduleConcurrency(); if (event.target.id === "schedule-workflow") renderScheduleParameters(); });
+  scheduleForm.addEventListener("input", (event) => { if (["profile_count", "max_concurrency"].includes(event.target.name)) syncScheduleConcurrency(); });
   runForm.addEventListener("submit", async (event) => {
   event.preventDefault(); setError("");
   const form = new FormData(runForm); const workflow = data.workflows.find((item) => String(item.id) === form.get("workflow_id"));
@@ -298,14 +319,15 @@ function initialize() {
     event.preventDefault(); setError("");
     const form = new FormData(scheduleForm); const workflow = data.workflows.find((item) => String(item.id) === form.get("workflow_id"));
     const type = form.get("type");
-    const run = {workflow_id: form.get("workflow_id"), workflow_name: workflow?.name || null, profile_mode: "new", profile_name: form.get("profile_name"), group_id: form.get("group_id"), proxy_mode: "none", profile_count: Number(form.get("profile_count")), profile_count_mode: form.get("profile_count_mode"), delete_profile: form.has("delete_profile"), close_browser: form.has("close_browser"), parameter: serializeParameters($("#schedule-parameters").querySelectorAll("[name^='parameter.']"))};
+    const maxConcurrency = Number(form.get("max_concurrency") || 1);
+    const run = {workflow_id: form.get("workflow_id"), workflow_name: workflow?.name || null, profile_mode: "new", profile_name: form.get("profile_name"), group_id: form.get("group_id"), proxy_mode: "none", profile_count: Number(form.get("profile_count")), profile_count_mode: form.get("profile_count_mode"), execution_mode: maxConcurrency > 1 ? "parallel" : "sequential", max_concurrency: maxConcurrency, delete_profile: form.has("delete_profile"), close_browser: form.has("close_browser"), parameter: serializeParameters($("#schedule-parameters").querySelectorAll("[name^='parameter.']"))};
     const payload = {name: form.get("name"), timezone: form.get("timezone"), type, time: form.get("time"), ...(type === "once" ? {date: form.get("date")} : {}), ...(type === "weekly" ? {weekdays: form.getAll("weekday").map(Number)} : {}), run};
-    try { await api("schedules", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); scheduleForm.reset(); scheduleForm.elements.timezone.value = "Asia/Bangkok"; scheduleForm.elements.close_browser.checked = true; syncScheduleForm(); status.textContent = "Schedule saved."; await loadSchedules(); }
+    try { await api("schedules", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); scheduleForm.reset(); scheduleForm.elements.timezone.value = "Asia/Bangkok"; scheduleForm.elements.close_browser.checked = true; syncScheduleForm(); syncScheduleConcurrency(); status.textContent = "Schedule saved."; await loadSchedules(); }
     catch (cause) { setError(cause.message); }
   });
   proxyForm.elements.raw_proxy.addEventListener("input", updateProxyCount);
   updateProxyCount();
-  syncScheduleForm(); renderScheduleParameters();
+  syncScheduleForm(); syncScheduleConcurrency(); renderScheduleParameters();
   $("#proxy-select-all").addEventListener("change", (event) => {
     selectedProxyIds = event.target.checked ? new Set(data.proxies.map((proxy) => String(proxy.id))) : new Set();
     renderProxies();

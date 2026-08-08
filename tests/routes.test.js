@@ -162,9 +162,12 @@ test("schedule routes create, toggle, and expose per-schedule history without pa
   const scheduleStore = new ScheduleStore(db, randomBytes(32), () => new Date("2026-08-08T00:00:00Z"));
   const runStore = {listRecent: () => [], get: () => null, listBySchedule: () => [{id: 9, workflow_id: "wf-1", profile_mode: "new", status: "done", source: "schedule", schedule_id: 1, actual_profile_count: 3, cleanup_status: "done"}]};
   const app = makeApp({scheduleStore, runStore});
-  const created = await request(app, "/api/schedules", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({name: "Morning", timezone: "Asia/Bangkok", type: "daily", time: "09:30", run: {workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "none", profile_count: 5, profile_count_mode: "random", delete_profile: true, close_browser: true, parameter: {token: "secret"}}})});
+  const created = await request(app, "/api/schedules", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({name: "Morning", timezone: "Asia/Bangkok", type: "daily", time: "09:30", run: {workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "none", profile_count: 5, profile_count_mode: "random", max_concurrency: 3, delete_profile: true, close_browser: true, parameter: {token: "secret"}}})});
   assert.equal(created.status, 201);
   assert.equal(JSON.stringify(created.body).includes("secret"), false);
+  assert.deepEqual(scheduleStore.getWithPayload(1).run, {workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "none", profile_count: 5, profile_count_mode: "random", max_concurrency: 3, execution_mode: "parallel", repeat_count: 5, delete_profile: true, close_browser: true, parameter: {token: "secret"}});
+  const invalidConcurrency = await request(app, "/api/schedules", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({name: "Invalid", timezone: "Asia/Bangkok", type: "daily", time: "09:30", run: {workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "none", profile_count: 2, max_concurrency: 3}})});
+  assert.equal(invalidConcurrency.status, 400);
   const disabled = await request(app, "/api/schedules/1/disable", {method: "POST"});
   assert.equal(disabled.body.enabled, false);
   const history = await request(app, "/api/schedules/1/runs");

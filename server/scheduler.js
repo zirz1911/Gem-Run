@@ -64,8 +64,8 @@ export class Scheduler {
     delete payload.profile_count_mode;
     if (payload.profile_mode === "new") {
       payload.repeat_count = actual;
-      payload.execution_mode ??= "sequential";
       payload.max_concurrency ??= 1;
+      payload.execution_mode ??= Number(payload.max_concurrency) > 1 ? "parallel" : "sequential";
     }
     try {
       const started = await this.runService.start(payload, {

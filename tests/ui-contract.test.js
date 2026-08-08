@@ -21,11 +21,14 @@ test("dashboard exposes the required panels without cloud credential names", asy
   assert.match(html, /name="repeat_count"/);
   assert.match(html, /name="execution_mode"/);
   assert.match(html, /name="max_concurrency"/);
+  assert.match(html, /class="field schedule-batch-field"/);
+  assert.match(html, /id="schedule-concurrency-warning"/);
   assert.match(html, /name="close_browser"/);
   assert.match(html, /name="delete_profile"/);
   assert.match(html, /id="run-cancel"/);
   assert.match(html, /id="schedule-form"/);
   assert.match(html, /name="profile_count_mode"/);
+  assert.match(html, /name="max_concurrency"/);
   assert.match(html, /id="schedules"/);
   assert.match(html, /id="schedule-parameters"/);
   assert.match(script, /schedules\/\$\{schedule\.id\}\/runs/);
@@ -36,6 +39,7 @@ test("dashboard exposes the required panels without cloud credential names", asy
   assert.match(styles, /\.history-panel\s*\{\s*grid-column:\s*span 4;\s*grid-row:\s*1;/);
   assert.match(script, /repeat_count/);
   assert.match(script, /max_concurrency/);
+  assert.match(script, /cannot exceed Maximum profiles/);
   assert.match(script, /renderRunProgress/);
   assert.match(script, /runs\/\$\{run\.id\}\/cancel/);
 });

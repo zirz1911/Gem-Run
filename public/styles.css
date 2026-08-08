@@ -68,6 +68,8 @@ form { margin: 0; }
 .form-grid-primary { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
 .field { display: grid; gap: 7px; min-width: 0; }
 .field > span { letter-spacing: .06em; }
+.schedule-batch-field { align-content: start; grid-template-rows: auto 42px; }
+.schedule-batch-field input { height: 42px; }
 input, select, button { min-height: 42px; font: inherit; }
 input:not([type="checkbox"]):not([type="radio"]), select, textarea { width: 100%; padding: 9px 11px; color: var(--ink); background: var(--paper); border: 1px solid var(--line-strong); border-radius: 2px; }
 textarea { min-height: 116px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem; line-height: 1.55; }
@@ -100,6 +102,8 @@ legend { padding: 0; }
 .check-line { display: flex; align-items: flex-start; gap: 9px; margin-top: 16px; color: var(--muted); font-size: .82rem; line-height: 1.4; cursor: pointer; }
 .check-line input { flex: 0 0 auto; margin-top: 2px; accent-color: var(--teal); }
 .input-hint { margin: 8px 0 0; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .68rem; }
+.schedule-concurrency-warning { grid-column: 1 / -1; margin: 14px 0 0; padding: 10px 12px; color: var(--teal); background: rgb(8 124 120 / 7%); border-left: 3px solid var(--teal); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .7rem; line-height: 1.45; }
+.schedule-concurrency-warning[data-state="error"] { color: var(--accent-dark); background: #fff0eb; border-left-color: var(--accent); }
 .parameters-fieldset { padding: 16px; background: var(--paper-deep); border: 1px solid var(--line); }
 .parameters-fieldset legend { padding: 0 7px; }
 #parameters label { display: grid; gap: 7px; margin-top: 13px; color: var(--muted); font-size: .82rem; }
