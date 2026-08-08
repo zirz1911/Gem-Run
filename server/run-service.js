@@ -41,8 +41,8 @@ function closeBrowserRequested(run) { return Boolean(run.close_browser ?? run.cl
 function deleteProfileRequested(run) { return Boolean(run.delete_profile ?? run.cleanup_requested); }
 
 export class RunService {
-  constructor({gemloginClient, proxyStore, runStore, clock = () => new Date(), sleep: sleepImpl = sleep, runTimeoutSeconds = 300, cleanupTimeout = cleanupTimeoutMs}) {
-    Object.assign(this, {gemloginClient, proxyStore, runStore, clock, sleep: sleepImpl, runTimeoutSeconds, cleanupTimeout});
+  constructor({gemloginClient, proxyStore, runStore, clock = () => new Date(), sleep: sleepImpl = sleep, runTimeoutSeconds = 300, cleanupTimeout = cleanupTimeoutMs, gemloginExecutionMode = "cloud"}) {
+    Object.assign(this, {gemloginClient, proxyStore, runStore, clock, sleep: sleepImpl, runTimeoutSeconds, cleanupTimeout, gemloginExecutionMode});
     this.tasks = new Set();
     this.refreshLock = Promise.resolve();
     this.cancelled = new Set();
@@ -225,7 +225,10 @@ export class RunService {
         await this.runWithDeadline(deadline, (signal) => this.gemloginClient.startProfile(currentProfileId, {signal}), runId);
         await this.runWithDeadline(deadline, (signal) => this.refreshProfileList({signal}), runId);
       }
-      const submitted = await this.runWithDeadline(deadline, (signal) => this.gemloginClient.executeCloud({
+      const executeWorkflow = this.gemloginExecutionMode === "local"
+        ? this.gemloginClient.executeLocal.bind(this.gemloginClient)
+        : this.gemloginClient.executeCloud.bind(this.gemloginClient);
+      const submitted = await this.runWithDeadline(deadline, (signal) => executeWorkflow({
         profileId: currentProfileId, workflowId: run.workflow_id, parameter: input.parameter ?? {},
         closeBrowser: closeBrowserRequested(run) || (run.profile_mode === "new" && deleteProfileRequested(run))
       }, {signal}), runId);

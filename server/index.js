@@ -31,7 +31,8 @@ const runStore = new RunStore(db);
 const scheduleStore = new ScheduleStore(db, proxyEncryptionKey);
 const runService = new RunService({
   gemloginClient, proxyStore, runStore,
-  runTimeoutSeconds: config.runTimeoutSeconds
+  runTimeoutSeconds: config.runTimeoutSeconds,
+  gemloginExecutionMode: config.gemloginExecutionMode
 });
 const scheduler = new Scheduler({scheduleStore, runService, runStore, intervalMs: config.schedulePollIntervalSeconds * 1000});
 void runService.recover().catch(() => console.error("Gem-Run recovery failed"));

@@ -3,7 +3,7 @@ import test from "node:test";
 import {RunService} from "../server/run-service.js";
 import {normalizeRemoteStatus} from "../server/status.js";
 
-function makeContext({remoteStatus = "success", remotePayload, hangStatus = false, hangCreate = false, hangSubmit = false, executeError, deleteError, deleteErrors, runTimeoutSeconds = 30, executionDelay = 0, realTime = false} = {}) {
+function makeContext({remoteStatus = "success", remotePayload, hangStatus = false, hangCreate = false, hangSubmit = false, executeError, deleteError, deleteErrors, runTimeoutSeconds = 30, executionDelay = 0, realTime = false, gemloginExecutionMode = "cloud"} = {}) {
   const records = new Map();
   let nextId = 1;
   let nextProfileId = 98;
@@ -55,7 +55,7 @@ function makeContext({remoteStatus = "success", remotePayload, hangStatus = fals
       const wait = new Promise((resolve) => { timer = setImmediate(() => { tick += seconds / 1000; resolve(); }); });
       wait.cancel = () => clearImmediate(timer);
       return wait;
-    }, runTimeoutSeconds
+    }, runTimeoutSeconds, gemloginExecutionMode
   });
   return {client, proxyStore, store, service, drain: () => service.drain(), get maxActiveExecutions() { return maxActiveExecutions; }};
 }
@@ -76,6 +76,18 @@ test("existing profile never calls create or delete", async () => {
   assert.deepEqual(ctx.client.calls.map((call) => call.name), ["executeCloud", "checkScriptStatus"]);
   assert.equal(ctx.store.get("run-1").cleanup_status, "not_requested");
   assert.deepEqual(ctx.store.updates.filter(({status}) => status).map(({status}) => status), ["submitted", "success", "done"]);
+});
+
+test("local execution mode submits existing and new profiles through Local API", async () => {
+  const existing = makeContext({gemloginExecutionMode: "local"});
+  await existing.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_id: 63, parameter: {keyword_file: "keywords.txt"}});
+  await existing.drain();
+  assert.deepEqual(existing.client.calls.map(({name}) => name), ["executeLocal", "checkScriptStatus"]);
+
+  const created = makeContext({gemloginExecutionMode: "local"});
+  await created.service.start({workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "none", parameter: {target_site: "example.com"}, cleanup_requested: true});
+  await created.drain();
+  assert.deepEqual(created.client.calls.map(({name}) => name), ["createProfile", "startProfile", "refreshProfileList", "executeLocal", "checkScriptStatus", "closeProfile", "deleteProfile", "refreshProfileList"]);
 });
 
 test("existing profile can close its browser without cleanup", async () => {
