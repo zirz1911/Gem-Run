@@ -77,8 +77,8 @@ function syncScheduleForm() {
   scheduleForm.elements.date.required = type === "once";
   for (const checkbox of scheduleForm.querySelectorAll("[name='weekday']")) checkbox.required = false;
 }
-function renderParameters() {
-  const workflow = data.workflows.find((item) => String(item.id) === $("#workflow").value);
+function renderParameters(target = "#parameters", workflowSelector = "#workflow") {
+  const workflow = data.workflows.find((item) => String(item.id) === $(workflowSelector).value);
   const fields = (workflow?.parameters || []).map((parameter) => {
     const controlType = parameterControlType(parameter);
     if (!controlType) {
@@ -107,8 +107,9 @@ function renderParameters() {
     label.append(control);
     return label;
   }).filter(Boolean);
-  $("#parameters").replaceChildren(Object.assign(document.createElement("legend"), {textContent: "Workflow parameters"}), ...(fields.length ? fields : [Object.assign(document.createElement("p"), {textContent: "No parameters."})]));
+  $(target).replaceChildren(Object.assign(document.createElement("legend"), {textContent: "Workflow parameters"}), ...(fields.length ? fields : [Object.assign(document.createElement("p"), {textContent: "No parameters."})]));
 }
+function renderScheduleParameters() { renderParameters("#schedule-parameters", "#schedule-workflow"); }
 function renderProfiles() {
   $("#profiles").replaceChildren(...data.profiles.map((profile) => Object.assign(document.createElement("li"), {textContent: `${profile.name || profile.id} · ${profile.status || "unknown"}${profile.proxy ? ` · ${profile.proxy}` : ""}`})));
 }
@@ -231,7 +232,7 @@ async function load() {
   status.textContent = health?.app === "ok" ? `Service ready; GemLogin ${health.gemlogin}.` : "Service unavailable.";
   renderSettings(settings);
   option($("#workflow"), workflows, "Choose a workflow"); option($("#group"), groups, "Choose a group"); option($("#profile"), profiles, "Choose a profile"); option($("#schedule-workflow"), workflows, "Choose a workflow"); option($("#schedule-group"), groups, "Choose a group");
-  renderProfiles(); renderParameters(); renderSchedules(schedules); await Promise.all([loadProxies(), history]);
+  renderProfiles(); renderParameters(); renderScheduleParameters(); renderSchedules(schedules); await Promise.all([loadProxies(), history]);
 }
 async function updateProxy(id, payload, raw) {
   try { await api(`proxies/${id}`, {method: "PATCH", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); if (raw) raw.value = ""; await loadProxies(); }
@@ -268,7 +269,7 @@ function initialize() {
   status = $("#status"); error = $("#error"); runForm = $("#run-form"); proxyForm = $("#proxy-form"); settingsForm = $("#settings-form"); scheduleForm = $("#schedule-form");
   syncRunForm();
   runForm.addEventListener("change", (event) => { if (["profile_mode", "proxy_mode", "execution_mode"].includes(event.target.name)) syncRunForm(); if (event.target.id === "workflow") renderParameters(); });
-  scheduleForm.addEventListener("change", (event) => { if (event.target.name === "type") syncScheduleForm(); });
+  scheduleForm.addEventListener("change", (event) => { if (event.target.name === "type") syncScheduleForm(); if (event.target.id === "schedule-workflow") renderScheduleParameters(); });
   runForm.addEventListener("submit", async (event) => {
   event.preventDefault(); setError("");
   const form = new FormData(runForm); const workflow = data.workflows.find((item) => String(item.id) === form.get("workflow_id"));
@@ -297,14 +298,14 @@ function initialize() {
     event.preventDefault(); setError("");
     const form = new FormData(scheduleForm); const workflow = data.workflows.find((item) => String(item.id) === form.get("workflow_id"));
     const type = form.get("type");
-    const run = {workflow_id: form.get("workflow_id"), workflow_name: workflow?.name || null, profile_mode: "new", profile_name: form.get("profile_name"), group_id: form.get("group_id"), proxy_mode: "none", profile_count: Number(form.get("profile_count")), profile_count_mode: form.get("profile_count_mode"), delete_profile: form.has("delete_profile"), close_browser: form.has("close_browser"), parameter: {}};
+    const run = {workflow_id: form.get("workflow_id"), workflow_name: workflow?.name || null, profile_mode: "new", profile_name: form.get("profile_name"), group_id: form.get("group_id"), proxy_mode: "none", profile_count: Number(form.get("profile_count")), profile_count_mode: form.get("profile_count_mode"), delete_profile: form.has("delete_profile"), close_browser: form.has("close_browser"), parameter: serializeParameters($("#schedule-parameters").querySelectorAll("[name^='parameter.']"))};
     const payload = {name: form.get("name"), timezone: form.get("timezone"), type, time: form.get("time"), ...(type === "once" ? {date: form.get("date")} : {}), ...(type === "weekly" ? {weekdays: form.getAll("weekday").map(Number)} : {}), run};
     try { await api("schedules", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); scheduleForm.reset(); scheduleForm.elements.timezone.value = "Asia/Bangkok"; scheduleForm.elements.close_browser.checked = true; syncScheduleForm(); status.textContent = "Schedule saved."; await loadSchedules(); }
     catch (cause) { setError(cause.message); }
   });
   proxyForm.elements.raw_proxy.addEventListener("input", updateProxyCount);
   updateProxyCount();
-  syncScheduleForm();
+  syncScheduleForm(); renderScheduleParameters();
   $("#proxy-select-all").addEventListener("change", (event) => {
     selectedProxyIds = event.target.checked ? new Set(data.proxies.map((proxy) => String(proxy.id))) : new Set();
     renderProxies();

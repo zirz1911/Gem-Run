@@ -27,9 +27,13 @@ test("dashboard exposes the required panels without cloud credential names", asy
   assert.match(html, /id="schedule-form"/);
   assert.match(html, /name="profile_count_mode"/);
   assert.match(html, /id="schedules"/);
+  assert.match(html, /id="schedule-parameters"/);
   assert.match(script, /schedules\/\$\{schedule\.id\}\/runs/);
+  assert.match(script, /renderScheduleParameters/);
   assert.match(script, /paused by Manual run/);
-  assert.match(await readFile(new URL("public/styles.css", root), "utf8"), /\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
+  const styles = await readFile(new URL("public/styles.css", root), "utf8");
+  assert.match(styles, /\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
+  assert.match(styles, /\.history-panel\s*\{\s*grid-column:\s*span 4;\s*grid-row:\s*1;/);
   assert.match(script, /repeat_count/);
   assert.match(script, /max_concurrency/);
   assert.match(script, /renderRunProgress/);
