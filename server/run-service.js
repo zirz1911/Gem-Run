@@ -95,7 +95,7 @@ export class RunService {
       profile_mode: input.profile_mode, profile_id: input.profile_mode === "existing" ? String(profileIds[index]) : null,
       proxy_id: assignedProxies[index]?.id ?? null, cleanup_requested: Boolean(deleteProfile),
       close_browser: Boolean(input.close_browser ?? input.cleanup_requested ?? false), delete_profile: Boolean(deleteProfile), status: "queued",
-      started_at: timestamp(this.clock), cleanup_status: deleteProfile ? "pending" : "not_requested", source: source.source ?? "manual",
+      started_at: null, cleanup_status: deleteProfile ? "pending" : "not_requested", source: source.source ?? "manual",
       schedule_id: source.scheduleId ?? null, schedule_name: source.scheduleName ?? null,
       configured_profile_count: source.configuredProfileCount ?? null, profile_count_mode: source.profileCountMode ?? null,
       actual_profile_count: source.actualProfileCount ?? (source.source === "schedule" ? repeatCount : null), schedule_execution_id: scheduleExecutionId,
@@ -203,7 +203,7 @@ export class RunService {
   }
 
   async execute(runId, input, assignedProxy = null) {
-    let run = this.runStore.get(runId);
+    let run = this.runStore.update(runId, {started_at: timestamp(this.clock)});
     const deadline = new Date(run.started_at).getTime() + this.runTimeoutSeconds * 1000;
     try {
       if (this.cancelled.has(String(runId))) throw new RunCancelledError();
@@ -246,7 +246,7 @@ export class RunService {
         if (status === "success") return this.finish(runId, "success", null, deadline);
         if (status === "failed") return this.finish(runId, "failed", "remote workflow failed", deadline);
         if (status === "not_running" && observedRunning) return this.finish(runId, "success", null, deadline);
-        if (status === "not_running" && new Date(timestamp(this.clock)).getTime() >= startupDeadline) {
+        if (this.gemloginExecutionMode !== "local" && status === "not_running" && new Date(timestamp(this.clock)).getTime() >= startupDeadline) {
           return this.finish(runId, "failed", "workflow did not start", deadline);
         }
         if (status === "timeout" || new Date(timestamp(this.clock)).getTime() >= deadline) return this.finish(runId, "timeout", "workflow timed out", deadline);

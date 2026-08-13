@@ -3,12 +3,13 @@ import test from "node:test";
 import {RunService} from "../server/run-service.js";
 import {normalizeRemoteStatus} from "../server/status.js";
 
-function makeContext({remoteStatus = "success", remotePayload, hangStatus = false, hangCreate = false, hangSubmit = false, executeError, deleteError, deleteErrors, runTimeoutSeconds = 30, executionDelay = 0, realTime = false, gemloginExecutionMode = "cloud"} = {}) {
+function makeContext({remoteStatus = "success", remotePayload, runningPolls = 0, statusSequences = {}, hangStatus = false, hangCreate = false, hangSubmit = false, executeError, deleteError, deleteErrors, runTimeoutSeconds = 30, executionDelay = 0, realTime = false, gemloginExecutionMode = "cloud"} = {}) {
   const records = new Map();
   let nextId = 1;
   let nextProfileId = 98;
   let activeExecutions = 0;
   let maxActiveExecutions = 0;
+  const statusChecks = new Map();
   const calls = [];
   const client = {
     calls,
@@ -27,7 +28,16 @@ function makeContext({remoteStatus = "success", remotePayload, hangStatus = fals
       if (executionDelay) { activeExecutions += 1; maxActiveExecutions = Math.max(maxActiveExecutions, activeExecutions); await new Promise((resolve) => setTimeout(resolve, executionDelay)); activeExecutions -= 1; }
       return {data: {id: "remote-1", status: "submitted"}};
     },
-    async checkScriptStatus() { calls.push({name: "checkScriptStatus"}); return hangStatus ? new Promise(() => {}) : (remotePayload ?? {data: {status: remoteStatus}}); },
+    async checkScriptStatus(_workflowId, profileId) {
+      calls.push({name: "checkScriptStatus", profileId: String(profileId)});
+      if (hangStatus) return new Promise(() => {});
+      const key = String(profileId);
+      const checks = statusChecks.get(key) ?? 0;
+      statusChecks.set(key, checks + 1);
+      const sequence = statusSequences[key];
+      if (sequence?.length) return sequence[Math.min(checks, sequence.length - 1)];
+      return checks < runningPolls ? {data: {status: "running"}} : (remotePayload ?? {data: {status: remoteStatus}});
+    },
     async closeProfile(profileId) { calls.push({name: "closeProfile", profileId}); },
     async deleteProfile(profileId) { calls.push({name: "deleteProfile", profileId}); const error = deleteErrors?.shift() ?? deleteError; if (error) throw error; }
   };
@@ -85,6 +95,48 @@ test("existing profile batch runs every selected profile", async () => {
   assert.equal(batch.runs.length, 2);
   assert.deepEqual(ctx.client.calls.filter(({name}) => name === "executeCloud").map(({details}) => details.profileId), ["63", "64"]);
   assert.deepEqual([1, 2].map((id) => ctx.store.get(`run-${id}`).status), ["done", "done"]);
+});
+
+test("queued batch runs get a full timeout after their worker starts", async () => {
+  const ctx = makeContext({runningPolls: 1, runTimeoutSeconds: 3});
+  await ctx.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_ids: [61, 62, 63, 64]});
+  await ctx.drain();
+  assert.deepEqual([1, 2, 3, 4].map((id) => ctx.store.get(`run-${id}`).error_message), [null, null, null, null]);
+});
+
+test("slow Local workflow keeps its worker beyond the startup window", async () => {
+  const notRunning = {is_running: false, message: "Script is not running"};
+  const running = {is_running: true, message: "Script is running"};
+  const ctx = makeContext({
+    gemloginExecutionMode: "local",
+    runTimeoutSeconds: 30,
+    statusSequences: {
+      61: [...Array(9).fill(notRunning), running, notRunning],
+      62: [running, notRunning]
+    }
+  });
+
+  await ctx.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_ids: [61, 62], execution_mode: "parallel", max_concurrency: 1});
+  await ctx.drain();
+
+  const first = ctx.store.get("run-1");
+  const second = ctx.store.get("run-2");
+  assert.equal(first.error_message, null);
+  assert.equal(second.error_message, null);
+  assert.ok(new Date(second.started_at) - new Date(first.started_at) >= 20_000);
+});
+
+test("Local workflow that never starts waits for the run deadline", async () => {
+  const ctx = makeContext({
+    gemloginExecutionMode: "local",
+    remotePayload: {is_running: false, message: "Script is not running"},
+    runTimeoutSeconds: 20
+  });
+
+  await ctx.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_id: 61});
+  await ctx.drain();
+
+  assert.equal(ctx.store.get("run-1").error_message, "workflow timed out");
 });
 
 test("local execution mode submits existing and new profiles through Local API", async () => {
