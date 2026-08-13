@@ -3,7 +3,7 @@ import test from "node:test";
 import {RunService} from "../server/run-service.js";
 import {normalizeRemoteStatus} from "../server/status.js";
 
-function makeContext({remoteStatus = "success", remotePayload, runningPolls = 0, statusSequences = {}, hangStatus = false, hangCreate = false, hangSubmit = false, executeError, deleteError, deleteErrors, runTimeoutSeconds = 30, executionDelay = 0, realTime = false, gemloginExecutionMode = "cloud"} = {}) {
+function makeContext({remoteStatus = "success", remotePayload, runningPolls = 0, statusSequences = {}, hangStatus = false, hangCreate = false, hangSubmit = false, executeError, closeWait, closeError, deleteError, deleteErrors, runTimeoutSeconds = 30, executionDelay = 0, realTime = false, gemloginExecutionMode = "cloud"} = {}) {
   const records = new Map();
   let nextId = 1;
   let nextProfileId = 98;
@@ -38,7 +38,7 @@ function makeContext({remoteStatus = "success", remotePayload, runningPolls = 0,
       if (sequence?.length) return sequence[Math.min(checks, sequence.length - 1)];
       return checks < runningPolls ? {data: {status: "running"}} : (remotePayload ?? {data: {status: remoteStatus}});
     },
-    async closeProfile(profileId) { calls.push({name: "closeProfile", profileId}); },
+    async closeProfile(profileId) { calls.push({name: "closeProfile", profileId}); if (closeWait) await closeWait; if (closeError) throw closeError; },
     async deleteProfile(profileId) { calls.push({name: "deleteProfile", profileId}); const error = deleteErrors?.shift() ?? deleteError; if (error) throw error; }
   };
   const store = {
@@ -137,6 +137,76 @@ test("Local workflow that never starts waits for the run deadline", async () => 
   await ctx.drain();
 
   assert.equal(ctx.store.get("run-1").error_message, "workflow timed out");
+});
+
+test("Local existing batch closes a profile before reusing its worker", async () => {
+  let releaseClose;
+  const closeWait = new Promise((resolve) => { releaseClose = resolve; });
+  const ctx = makeContext({gemloginExecutionMode: "local", closeWait});
+
+  await ctx.service.start({
+    workflow_id: "wf-1", profile_mode: "existing", profile_ids: [61, 62],
+    execution_mode: "parallel", max_concurrency: 1, close_browser: false
+  });
+  await new Promise(setImmediate);
+
+  assert.deepEqual(ctx.client.calls.filter(({name}) => name === "executeLocal").map(({details}) => String(details.profileId)), ["61"]);
+  assert.deepEqual(ctx.client.calls.filter(({name}) => name === "closeProfile").map(({profileId}) => String(profileId)), ["61"]);
+
+  releaseClose();
+  await ctx.drain();
+
+  assert.deepEqual(
+    ctx.client.calls.filter(({name}) => ["executeLocal", "closeProfile"].includes(name))
+      .map(({name, details, profileId}) => [name, String(details?.profileId ?? profileId)]),
+    [["executeLocal", "61"], ["closeProfile", "61"], ["executeLocal", "62"], ["closeProfile", "62"]]
+  );
+  assert.equal(ctx.client.calls.find(({name}) => name === "executeLocal").details.closeBrowser, true);
+  assert.equal(ctx.store.get("run-1").close_browser, true);
+  assert.equal(ctx.store.get("run-1").cleanup_status, "done");
+});
+
+test("Local existing batch close failure preserves the workflow result", async () => {
+  const ctx = makeContext({gemloginExecutionMode: "local", closeError: new Error("close rejected")});
+
+  await ctx.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_ids: [61, 62]});
+  await ctx.drain();
+
+  assert.equal(ctx.store.get("run-1").error_message, null);
+  assert.equal(ctx.store.get("run-1").cleanup_status, "failed");
+  assert.equal(ctx.store.get("run-2").error_message, null);
+  assert.equal(ctx.store.get("run-2").cleanup_status, "failed");
+});
+
+test("dispatched Local existing batch profiles close after failure and timeout", async () => {
+  const failed = makeContext({gemloginExecutionMode: "local", remoteStatus: "failed"});
+  await failed.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_ids: [61, 62]});
+  await failed.drain();
+
+  const timedOut = makeContext({gemloginExecutionMode: "local", remoteStatus: "running", runTimeoutSeconds: 3});
+  await timedOut.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_ids: [71, 72]});
+  await timedOut.drain();
+
+  assert.deepEqual(failed.client.calls.filter(({name}) => name === "closeProfile").map(({profileId}) => String(profileId)), ["61", "62"]);
+  assert.deepEqual(timedOut.client.calls.filter(({name}) => name === "closeProfile").map(({profileId}) => String(profileId)), ["71", "72"]);
+  assert.deepEqual([1, 2].map((id) => timedOut.store.get(`run-${id}`).cleanup_status), ["done", "done"]);
+});
+
+test("queued Local existing batch profile cancelled before dispatch is not closed", async () => {
+  const ctx = makeContext({gemloginExecutionMode: "local", hangSubmit: true, realTime: true});
+  await ctx.service.start({
+    workflow_id: "wf-1", profile_mode: "existing", profile_ids: [61, 62],
+    execution_mode: "parallel", max_concurrency: 1
+  });
+  await new Promise(setImmediate);
+
+  ctx.service.cancel("run-1");
+  await ctx.drain();
+
+  assert.deepEqual(ctx.client.calls.filter(({name}) => name === "executeLocal").map(({details}) => String(details.profileId)), ["61"]);
+  assert.deepEqual(ctx.client.calls.filter(({name}) => name === "closeProfile").map(({profileId}) => String(profileId)), ["61"]);
+  assert.equal(ctx.store.get("run-1").cleanup_status, "done");
+  assert.equal(ctx.store.get("run-2").cleanup_status, "not_requested");
 });
 
 test("local execution mode submits existing and new profiles through Local API", async () => {
