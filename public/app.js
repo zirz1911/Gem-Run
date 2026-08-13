@@ -27,6 +27,9 @@ export function batchSize(profileMode, profiles, selection, profileId, groupId, 
 export function batchExecutionSettings(executionMode, maxConcurrency) {
   return {execution_mode: executionMode, max_concurrency: executionMode === "parallel" ? Number(maxConcurrency || 2) : 1};
 }
+export function runConcurrencyActive(profileMode, existingSelection, executionMode) {
+  return executionMode === "parallel" && (profileMode === "new" || existingSelection !== "profile");
+}
 export function parameterControlType(parameter) {
   if (["divider", "label", "inline"].includes(parameter.type)) return null;
   if (Array.isArray(parameter.options)) return "select";
@@ -72,6 +75,7 @@ function syncRunForm() {
   const isNew = profileMode() === "new";
   const existingSelection = runForm.elements.existing_selection.value;
   const showBatchOptions = isNew || existingSelection !== "profile";
+  const concurrencyActive = runConcurrencyActive(profileMode(), existingSelection, runForm.elements.execution_mode.value);
   $("#existing-profile").hidden = isNew;
   $("#new-profile").hidden = !isNew;
   $("#existing-profile-field").hidden = existingSelection !== "profile";
@@ -84,11 +88,13 @@ function syncRunForm() {
   $("#manual-proxy").hidden = !isNew || proxyMode() !== "manual";
   runForm.elements.raw_proxy.required = isNew && proxyMode() === "manual";
   $("#batch-options").hidden = !showBatchOptions;
-  $("#parallel-options").hidden = !showBatchOptions || runForm.elements.execution_mode.value !== "parallel";
+  $("#parallel-options").hidden = !concurrencyActive;
+  runForm.elements.max_concurrency.disabled = !concurrencyActive;
   syncRunConcurrency();
 }
 function syncRunConcurrency() {
   const input = runForm.elements.max_concurrency;
+  if (input.disabled) { input.setCustomValidity(""); return; }
   const count = batchSize(profileMode(), data.profiles, runForm.elements.existing_selection.value, runForm.elements.profile_id.value, runForm.elements.existing_group_id.value, runForm.elements.repeat_count.value);
   input.max = String(Math.min(500, Math.max(1, count)));
   input.setCustomValidity(count > 0 && Number(input.value) > count ? `Maximum concurrent profiles cannot exceed the batch size (${count}).` : "");
