@@ -66,6 +66,7 @@ h2 { margin-bottom: 0; font-size: clamp(1.35rem, 2vw, 1.85rem); letter-spacing: 
 form { margin: 0; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .run-target-grid { display: grid; gap: 18px; }
+.run-target-grid > .choice-fieldset { margin-top: 0; }
 .field { display: grid; gap: 7px; min-width: 0; }
 .field > span { letter-spacing: .06em; }
 .schedule-batch-field { align-content: start; grid-template-rows: auto 42px; }
