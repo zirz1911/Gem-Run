@@ -184,3 +184,12 @@ test("schedule routes create, toggle, and expose per-schedule history without pa
   const history = await request(app, "/api/schedules/1/runs");
   assert.equal(history.body[0].actual_profile_count, 3);
 });
+
+test("scheduled batches accept 500-profile concurrency and reject 501", async () => {
+  const db = openDatabase(":memory:");
+  const scheduleStore = new ScheduleStore(db, randomBytes(32), () => new Date("2026-08-08T00:00:00Z"));
+  const app = makeApp({scheduleStore});
+  const schedule = (count) => ({name: "Large batch", timezone: "Asia/Bangkok", type: "daily", time: "09:30", run: {workflow_id: "wf-1", profile_mode: "new", profile_name: "Temp", group_id: "1", proxy_mode: "none", profile_count: count, max_concurrency: count}});
+  assert.equal((await request(app, "/api/schedules", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(schedule(500))})).status, 201);
+  assert.equal((await request(app, "/api/schedules", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(schedule(501))})).status, 400);
+});

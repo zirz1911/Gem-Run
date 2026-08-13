@@ -74,7 +74,9 @@ export class RunService {
     const executionMode = input.execution_mode ?? "sequential";
     if (!["sequential", "parallel"].includes(executionMode)) throw new Error("execution_mode must be sequential or parallel");
     const maxConcurrency = Number(input.max_concurrency ?? (executionMode === "parallel" ? 2 : 1));
-    if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 10) throw new Error("max_concurrency must be between 1 and 10");
+    if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 500) throw new Error("max_concurrency must be between 1 and 500");
+    const batchSize = input.profile_mode === "existing" ? (input.profile_ids ?? [input.profile_id]).length : repeatCount;
+    if (maxConcurrency > batchSize) throw new Error("max_concurrency cannot exceed profile count");
   }
 
   async start(input, source = {}) {
@@ -84,7 +86,7 @@ export class RunService {
     const repeatCount = input.profile_mode === "existing" ? profileIds.length : Number(input.repeat_count ?? 1);
     const executionMode = input.execution_mode ?? "sequential";
     const deleteProfile = input.delete_profile ?? input.cleanup_requested ?? false;
-    const maxConcurrency = Math.min(Number(input.max_concurrency ?? (executionMode === "parallel" ? 2 : 1)), repeatCount);
+    const maxConcurrency = Number(input.max_concurrency ?? (executionMode === "parallel" ? 2 : 1));
     const batchId = repeatCount > 1 ? randomUUID() : null;
     const scheduleExecutionId = source.source === "schedule" ? (source.scheduleExecutionId ?? randomUUID()) : null;
     const assignedProxies = this.assignProxies(input, repeatCount);

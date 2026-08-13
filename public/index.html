@@ -40,11 +40,11 @@
           </div>
           <p class="section-intro">Choose the workflow and the browser identity that should carry it.</p>
           <form id="run-form">
-            <div class="form-grid form-grid-primary">
+            <div class="run-target-grid">
               <label class="field field-wide"><span>Workflow</span><select id="workflow" name="workflow_id" required></select></label>
               <div id="existing-profile">
                 <fieldset class="choice-fieldset"><legend>Existing profiles</legend><div class="choice-grid choice-grid-three"><label class="choice-card compact-choice"><input type="radio" name="existing_selection" value="profile" checked><span><strong>One profile</strong><small>Choose a single profile.</small></span></label><label class="choice-card compact-choice"><input type="radio" name="existing_selection" value="group"><span><strong>Group</strong><small>Run every profile in a group.</small></span></label><label class="choice-card compact-choice"><input type="radio" name="existing_selection" value="all"><span><strong>All profiles</strong><small>Run every loaded profile.</small></span></label></div></fieldset>
-                <div class="form-grid"><label id="existing-profile-field" class="field"><span>Existing profile</span><select id="profile" name="profile_id"></select></label><label id="existing-group-field" class="field" hidden><span>Existing profile group</span><select id="existing-group" name="existing_group_id"></select></label></div>
+                <div class="form-grid existing-profile-selector"><label id="existing-profile-field" class="field"><span>Existing profile</span><select id="profile" name="profile_id"></select></label><label id="existing-group-field" class="field" hidden><span>Existing profile group</span><select id="existing-group" name="existing_group_id"></select></label></div>
               </div>
             </div>
             <fieldset class="choice-fieldset"><legend>Profile mode</legend>
@@ -67,14 +67,14 @@
                 </div>
               </fieldset>
               <label id="manual-proxy" class="field" hidden><span>One-time proxy</span><input name="raw_proxy" type="password" autocomplete="off" spellcheck="false" placeholder="host:port:user:pass"></label>
-              <div class="batch-options">
-                <div class="form-grid">
-                  <label class="field"><span>New profiles / rounds</span><input name="repeat_count" type="number" min="1" max="500" value="1" inputmode="numeric"></label>
-                  <fieldset class="choice-fieldset"><legend>Run mode</legend><div class="choice-grid"><label class="choice-card compact-choice"><input type="radio" name="execution_mode" value="sequential" checked><span><strong>One by one</strong><small>Safer and easier to monitor.</small></span></label><label class="choice-card compact-choice"><input type="radio" name="execution_mode" value="parallel"><span><strong>Parallel</strong><small>Run several profiles at once.</small></span></label></div></fieldset>
-                </div>
-                <label id="parallel-options" class="field" hidden><span>Maximum concurrent profiles</span><input name="max_concurrency" type="number" min="1" max="10" value="2" inputmode="numeric"><small class="input-hint">Start with 2; GemLogin performance and workflow behavior can limit this.</small></label>
-              </div>
+              <div class="new-profile-count"><label class="field"><span>New profiles / rounds</span><input name="repeat_count" type="number" min="1" max="500" value="1" inputmode="numeric"></label></div>
               <label class="check-line"><input name="delete_profile" type="checkbox"><span>Delete this new profile after the run</span></label>
+            </div>
+            <div id="batch-options" class="batch-options" hidden>
+              <div class="form-grid">
+                <fieldset class="choice-fieldset"><legend>Run mode</legend><div class="choice-grid"><label class="choice-card compact-choice"><input type="radio" name="execution_mode" value="sequential" checked><span><strong>One by one</strong><small>Safer and easier to monitor.</small></span></label><label class="choice-card compact-choice"><input type="radio" name="execution_mode" value="parallel"><span><strong>Parallel</strong><small>Run several profiles at once.</small></span></label></div></fieldset>
+                <label id="parallel-options" class="field" hidden><span>Maximum concurrent profiles</span><input name="max_concurrency" type="number" min="1" max="500" value="2" inputmode="numeric"><small class="input-hint">Tune this to the machine; it cannot exceed the selected batch size.</small></label>
+              </div>
             </div>
             <fieldset id="parameters" class="parameters-fieldset"><legend>Workflow parameters</legend><p>Select a workflow.</p></fieldset>
             <div class="form-actions"><p class="form-note"><span class="accent-mark">●</span> One active batch at a time</p><div class="form-buttons"><button id="run-cancel" class="danger-button" type="button" hidden>Cancel task</button><button id="run-submit" class="primary-button" type="submit">Run workflow <span aria-hidden="true">↗</span></button></div></div>
@@ -93,8 +93,8 @@
               <label class="field"><span>Workflow</span><select name="workflow_id" id="schedule-workflow" required></select></label>
               <label class="field"><span>Profile name</span><input name="profile_name" required autocomplete="off" placeholder="Scheduled profile"></label>
               <label class="field"><span>Group</span><select name="group_id" id="schedule-group" required></select></label>
-              <label class="field schedule-batch-field"><span>Maximum profiles</span><input name="profile_count" type="number" min="1" max="100" value="1" required></label>
-              <label class="field schedule-batch-field"><span>Profiles at a time</span><input name="max_concurrency" type="number" min="1" max="10" value="1" required></label>
+              <label class="field schedule-batch-field"><span>Maximum profiles</span><input name="profile_count" type="number" min="1" max="500" value="1" required></label>
+              <label class="field schedule-batch-field"><span>Profiles at a time</span><input name="max_concurrency" type="number" min="1" max="500" value="1" required></label>
               <label class="field"><span>Timezone</span><input name="timezone" value="Asia/Bangkok" required></label>
               <label class="field"><span>Time</span><input name="time" type="time" value="09:00" required></label>
               <label class="field"><span>Frequency</span><select name="type"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="once">Once</option></select></label>

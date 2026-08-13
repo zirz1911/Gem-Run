@@ -160,6 +160,15 @@ test("new profile batches accept 500 rounds and reject 501", () => {
   assert.throws(() => ctx.service.validate({workflow_id: "wf-1", profile_mode: "new", profile_name: "Batch", group_id: "1", proxy_mode: "none", repeat_count: 501}), /repeat_count/);
 });
 
+test("manual batch concurrency accepts 500 and cannot exceed the batch size", () => {
+  const ctx = makeContext();
+  const newBatch = {workflow_id: "wf-1", profile_mode: "new", profile_name: "Batch", group_id: "1", proxy_mode: "none", execution_mode: "parallel"};
+  assert.doesNotThrow(() => ctx.service.validate({...newBatch, repeat_count: 500, max_concurrency: 500}));
+  assert.throws(() => ctx.service.validate({...newBatch, repeat_count: 500, max_concurrency: 501}), /max_concurrency/);
+  assert.throws(() => ctx.service.validate({...newBatch, repeat_count: 3, max_concurrency: 4}), /profile count/);
+  assert.doesNotThrow(() => ctx.service.validate({workflow_id: "wf-1", profile_mode: "existing", profile_ids: [1, 2, 3], execution_mode: "parallel", max_concurrency: 3}));
+});
+
 test("does not treat an unstarted workflow as success", async () => {
   const ctx = makeContext({remotePayload: {is_running: false, message: "Script is not running"}, runTimeoutSeconds: 20});
   await ctx.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_id: 63, cleanup_requested: false});

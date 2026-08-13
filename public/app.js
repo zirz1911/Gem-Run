@@ -21,6 +21,12 @@ export function selectExistingProfileIds(profiles, selection, profileId, groupId
   if (selection === "group") return profiles.filter((profile) => String(profile.group_id) === String(groupId)).map(({id}) => id);
   return profileId ? [profileId] : [];
 }
+export function batchSize(profileMode, profiles, selection, profileId, groupId, repeatCount) {
+  return profileMode === "new" ? Number(repeatCount || 0) : selectExistingProfileIds(profiles, selection, profileId, groupId).length;
+}
+export function batchExecutionSettings(executionMode, maxConcurrency) {
+  return {execution_mode: executionMode, max_concurrency: executionMode === "parallel" ? Number(maxConcurrency || 2) : 1};
+}
 export function parameterControlType(parameter) {
   if (["divider", "label", "inline"].includes(parameter.type)) return null;
   if (Array.isArray(parameter.options)) return "select";
@@ -65,6 +71,7 @@ function renderSettings(settings) {
 function syncRunForm() {
   const isNew = profileMode() === "new";
   const existingSelection = runForm.elements.existing_selection.value;
+  const showBatchOptions = isNew || existingSelection !== "profile";
   $("#existing-profile").hidden = isNew;
   $("#new-profile").hidden = !isNew;
   $("#existing-profile-field").hidden = existingSelection !== "profile";
@@ -76,7 +83,15 @@ function syncRunForm() {
   runForm.elements.delete_profile.disabled = !isNew;
   $("#manual-proxy").hidden = !isNew || proxyMode() !== "manual";
   runForm.elements.raw_proxy.required = isNew && proxyMode() === "manual";
-  $("#parallel-options").hidden = !isNew || runForm.elements.execution_mode.value !== "parallel";
+  $("#batch-options").hidden = !showBatchOptions;
+  $("#parallel-options").hidden = !showBatchOptions || runForm.elements.execution_mode.value !== "parallel";
+  syncRunConcurrency();
+}
+function syncRunConcurrency() {
+  const input = runForm.elements.max_concurrency;
+  const count = batchSize(profileMode(), data.profiles, runForm.elements.existing_selection.value, runForm.elements.profile_id.value, runForm.elements.existing_group_id.value, runForm.elements.repeat_count.value);
+  input.max = String(Math.min(500, Math.max(1, count)));
+  input.setCustomValidity(count > 0 && Number(input.value) > count ? `Maximum concurrent profiles cannot exceed the batch size (${count}).` : "");
 }
 function syncScheduleForm() {
   const type = scheduleForm?.elements.type.value;
@@ -92,7 +107,7 @@ function syncScheduleConcurrency() {
   const concurrency = Number(scheduleForm.elements.max_concurrency.value || 0);
   const input = scheduleForm.elements.max_concurrency;
   const warning = $("#schedule-concurrency-warning");
-  input.max = String(Math.min(10, Math.max(1, profileCount)));
+  input.max = String(Math.min(500, Math.max(1, profileCount)));
   if (profileCount > 0 && concurrency > profileCount) {
     input.setCustomValidity("Profiles at a time cannot exceed Maximum profiles.");
     warning.textContent = `Warning: Profiles at a time cannot exceed Maximum profiles (${profileCount}).`;
@@ -246,7 +261,7 @@ async function loadSchedules() {
   catch { setError("Schedule data could not be loaded."); }
 }
 async function loadProfiles() {
-  try { data.profiles = await api("gemlogin/profiles"); option($("#profile"), data.profiles, "Choose a profile"); renderProfiles(); }
+  try { data.profiles = await api("gemlogin/profiles"); option($("#profile"), data.profiles, "Choose a profile"); renderProfiles(); syncRunForm(); }
   catch { setError("Profiles could not be loaded."); }
 }
 async function optionalLoad(path, fallback) {
@@ -261,7 +276,7 @@ async function load() {
   status.textContent = health?.app === "ok" ? `Service ready; GemLogin ${health.gemlogin}.` : "Service unavailable.";
   renderSettings(settings);
   option($("#workflow"), workflows, "Choose a workflow"); option($("#group"), groups, "Choose a group"); option($("#existing-group"), groups, "Choose a group"); option($("#profile"), profiles, "Choose a profile"); option($("#schedule-workflow"), workflows, "Choose a workflow"); option($("#schedule-group"), groups, "Choose a group");
-  renderProfiles(); renderParameters(); renderScheduleParameters(); renderSchedules(schedules); await Promise.all([loadProxies(), history]);
+  renderProfiles(); renderParameters(); renderScheduleParameters(); renderSchedules(schedules); syncRunForm(); await Promise.all([loadProxies(), history]);
 }
 async function updateProxy(id, payload, raw) {
   try { await api(`proxies/${id}`, {method: "PATCH", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); if (raw) raw.value = ""; await loadProxies(); }
@@ -297,7 +312,8 @@ function poll(id) {
 function initialize() {
   status = $("#status"); error = $("#error"); runForm = $("#run-form"); proxyForm = $("#proxy-form"); settingsForm = $("#settings-form"); scheduleForm = $("#schedule-form");
   syncRunForm();
-  runForm.addEventListener("change", (event) => { if (["profile_mode", "existing_selection", "proxy_mode", "execution_mode"].includes(event.target.name)) syncRunForm(); if (event.target.id === "workflow") renderParameters(); });
+  runForm.addEventListener("change", (event) => { if (["profile_mode", "existing_selection", "existing_group_id", "profile_id", "proxy_mode", "execution_mode"].includes(event.target.name)) syncRunForm(); if (event.target.id === "workflow") renderParameters(); });
+  runForm.addEventListener("input", (event) => { if (["repeat_count", "max_concurrency"].includes(event.target.name)) syncRunConcurrency(); });
   scheduleForm.addEventListener("change", (event) => { if (event.target.name === "type") syncScheduleForm(); if (["profile_count", "max_concurrency"].includes(event.target.name)) syncScheduleConcurrency(); if (event.target.id === "schedule-workflow") renderScheduleParameters(); });
   scheduleForm.addEventListener("input", (event) => { if (["profile_count", "max_concurrency"].includes(event.target.name)) syncScheduleConcurrency(); });
   runForm.addEventListener("submit", async (event) => {
@@ -309,8 +325,9 @@ function initialize() {
     const profileIds = selectExistingProfileIds(data.profiles, form.get("existing_selection"), form.get("profile_id"), form.get("existing_group_id"));
     if (!profileIds.length) { setError("No existing profiles match this selection."); return; }
     if (profileIds.length === 1) payload.profile_id = profileIds[0]; else payload.profile_ids = profileIds;
+    if (form.get("existing_selection") !== "profile") Object.assign(payload, batchExecutionSettings(form.get("execution_mode"), form.get("max_concurrency")));
   }
-  else Object.assign(payload, {profile_name: form.get("profile_name"), group_id: form.get("group_id"), proxy_mode: form.get("proxy_mode"), repeat_count: Number(form.get("repeat_count") || 1), execution_mode: form.get("execution_mode"), max_concurrency: form.get("execution_mode") === "parallel" ? Number(form.get("max_concurrency") || 2) : 1, ...(form.get("proxy_mode") === "manual" ? {raw_proxy: form.get("raw_proxy")} : {})});
+  else Object.assign(payload, {profile_name: form.get("profile_name"), group_id: form.get("group_id"), proxy_mode: form.get("proxy_mode"), repeat_count: Number(form.get("repeat_count") || 1), ...batchExecutionSettings(form.get("execution_mode"), form.get("max_concurrency")), ...(form.get("proxy_mode") === "manual" ? {raw_proxy: form.get("raw_proxy")} : {})});
   try { $("#run-submit").disabled = true; const run = await api("runs", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); runForm.elements.raw_proxy.value = ""; status.textContent = `${run.batch_id ? `Batch ${run.batch_id}` : `Run #${run.id}`} started.`; await loadRuns(); }
   catch (cause) { setError(cause.message); $("#run-submit").disabled = false; }
 });

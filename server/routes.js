@@ -7,7 +7,7 @@ const invalidRunRequests = new Set([
   "cleanup is only available for new profiles", "profile_name is required", "group_id is required",
   "profile_ids are invalid", "profile_ids are only available for existing profiles",
   "proxy_mode must be none, manual, or random", "repeat_count must be between 1 and 500", "repeat_count is only available for new profiles",
-  "execution_mode must be sequential or parallel", "max_concurrency must be between 1 and 10", "not enough enabled proxies for batch", "Proxy must be a string",
+  "execution_mode must be sequential or parallel", "max_concurrency must be between 1 and 500", "max_concurrency cannot exceed profile count", "not enough enabled proxies for batch", "Proxy must be a string",
   "Proxy must include host, port, and complete credentials", "Proxy host is invalid",
   "Proxy port must be between 1 and 65535"
 ]);
@@ -71,13 +71,13 @@ function validScheduledRun(input, runService) {
   const run = {...input};
   if (run.profile_mode === "new") {
     const count = Number(run.profile_count);
-    if (!Number.isInteger(count) || count < 1 || count > 100) throw new Error("profile_count must be between 1 and 100");
+    if (!Number.isInteger(count) || count < 1 || count > 500) throw new Error("profile_count must be between 1 and 500");
     if (!['fixed', 'random'].includes(run.profile_count_mode ?? "fixed")) throw new Error("profile_count_mode is invalid");
     run.profile_count = count;
     run.profile_count_mode = run.profile_count_mode ?? "fixed";
     run.repeat_count = count;
     const maxConcurrency = Number(run.max_concurrency ?? 1);
-    if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 10) throw new Error("max_concurrency must be between 1 and 10");
+    if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 500) throw new Error("max_concurrency must be between 1 and 500");
     if (maxConcurrency > count) throw new Error("max_concurrency cannot exceed profile_count");
     run.max_concurrency = maxConcurrency;
     run.execution_mode = run.execution_mode ?? (Number(run.max_concurrency) > 1 ? "parallel" : "sequential");

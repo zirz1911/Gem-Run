@@ -65,7 +65,7 @@ h2 { margin-bottom: 0; font-size: clamp(1.35rem, 2vw, 1.85rem); letter-spacing: 
 
 form { margin: 0; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.form-grid-primary { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
+.run-target-grid { display: grid; gap: 18px; }
 .field { display: grid; gap: 7px; min-width: 0; }
 .field > span { letter-spacing: .06em; }
 .schedule-batch-field { align-content: start; grid-template-rows: auto 42px; }
@@ -85,6 +85,8 @@ button:disabled { cursor: wait; opacity: .55; }
 
 fieldset { min-width: 0; margin: 22px 0 0; padding: 0; border: 0; }
 legend { padding: 0; }
+#existing-profile .choice-fieldset { margin-top: 0; }
+.existing-profile-selector { max-width: calc(50% - 7px); margin-top: 14px; }
 .choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 9px; }
 .choice-grid-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .choice-card { display: flex; align-items: flex-start; gap: 10px; min-height: 74px; padding: 12px; color: var(--ink); background: var(--paper-deep); border: 1px solid var(--line); border-radius: 2px; cursor: pointer; }
@@ -95,6 +97,7 @@ legend { padding: 0; }
 .choice-card small { color: var(--muted); font-size: .74rem; line-height: 1.35; }
 .new-profile-fields { margin-top: 22px; padding: 18px; background: rgb(246 241 232 / 75%); border: 1px solid var(--line); border-left: 3px solid var(--teal); }
 .new-profile-fields fieldset { margin-top: 18px; }
+.new-profile-count { max-width: calc(50% - 7px); margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
 .batch-options { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
 .batch-options .choice-fieldset { margin-top: 0; }
 .compact-choice { min-height: 0; padding: 9px; }
@@ -168,6 +171,7 @@ legend { padding: 0; }
   .run-panel { grid-column: 1 / -1; }
   .history-panel { grid-row: auto; }
   .choice-grid-three { grid-template-columns: 1fr; }
+  #existing-profile .choice-grid-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 680px) {
   main { padding: 24px 14px 40px; }
@@ -179,7 +183,8 @@ legend { padding: 0; }
   .panel { margin-bottom: 12px; padding: 18px 16px; }
   .panel-heading { gap: 10px; }
   .panel-code { font-size: .54rem; }
-  .form-grid, .form-grid-primary, .choice-grid { grid-template-columns: 1fr; }
+  .form-grid, .choice-grid, #existing-profile .choice-grid-three { grid-template-columns: 1fr; }
+  .existing-profile-selector, .new-profile-count { max-width: none; }
   .choice-card { min-height: 0; }
   .new-profile-fields { padding: 14px; }
   .form-actions { align-items: flex-start; flex-direction: column; }

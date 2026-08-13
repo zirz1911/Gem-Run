@@ -47,7 +47,7 @@ test("dashboard exposes the required panels without cloud credential names", asy
 });
 
 test("workflow form serialization preserves checked and unchecked booleans", async () => {
-  const {serializeParameters, parseProxyLines, selectExistingProfileIds} = await import(`../public/app.js?form-contract=${Date.now()}`);
+  const {serializeParameters, parseProxyLines, selectExistingProfileIds, batchSize, batchExecutionSettings} = await import(`../public/app.js?form-contract=${Date.now()}`);
   assert.deepEqual(serializeParameters([
     {name: "parameter.enabled", type: "checkbox", checked: true, value: "on"},
     {name: "parameter.archive", type: "checkbox", checked: false, value: "on"},
@@ -57,6 +57,11 @@ test("workflow form serialization preserves checked and unchecked booleans", asy
   const profiles = [{id: 1, group_id: 7}, {id: 2, group_id: 8}, {id: 3, group_id: 7}];
   assert.deepEqual(selectExistingProfileIds(profiles, "group", "", "7"), [1, 3]);
   assert.deepEqual(selectExistingProfileIds(profiles, "all", "", ""), [1, 2, 3]);
+  assert.equal(batchSize("new", profiles, "profile", "", "", 500), 500);
+  assert.equal(batchSize("existing", profiles, "group", "", "7", 1), 2);
+  assert.equal(batchSize("existing", profiles, "all", "", "", 1), 3);
+  assert.deepEqual(batchExecutionSettings("parallel", "25"), {execution_mode: "parallel", max_concurrency: 25});
+  assert.deepEqual(batchExecutionSettings("sequential", "25"), {execution_mode: "sequential", max_concurrency: 1});
 });
 
 test("maps GemLogin parameter types to matching controls", async () => {
