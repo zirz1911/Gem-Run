@@ -6,7 +6,7 @@ export function createApp({config, gemloginClient, proxyStore, runStore, runServ
 
   app.use(express.json({limit: "100kb"}));
   app.use(express.static("public"));
-  app.use(createRoutes({gemloginClient, proxyStore, runStore, runService, settingsStore, scheduleStore, scheduler}));
+  app.use(createRoutes({config, gemloginClient, proxyStore, runStore, runService, settingsStore, scheduleStore, scheduler}));
   app.get("/", (_request, response) => response.sendFile("index.html", {root: "public"}));
 
   return app;

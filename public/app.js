@@ -6,7 +6,7 @@ let proxyForm;
 let settingsForm;
 let scheduleForm;
 const activeStatuses = new Set(["queued", "submitted", "running", "cancelling"]);
-let data = {workflows: [], groups: [], profiles: [], proxies: [], schedules: [], activeRun: null};
+let data = {workflows: [], groups: [], profiles: [], proxies: [], schedules: [], activeRun: null, executionMode: null};
 let selectedProxyIds = new Set();
 let poller;
 
@@ -29,6 +29,9 @@ export function batchExecutionSettings(executionMode, maxConcurrency) {
 }
 export function runConcurrencyActive(profileMode, existingSelection, executionMode) {
   return executionMode === "parallel" && (profileMode === "new" || existingSelection !== "profile");
+}
+export function browserCloseForced(executionMode, selectedProfileMode, existingSelection) {
+  return executionMode === "local" && selectedProfileMode === "existing" && existingSelection !== "profile";
 }
 export function parameterControlType(parameter) {
   if (["divider", "label", "inline"].includes(parameter.type)) return null;
@@ -74,6 +77,7 @@ function renderSettings(settings) {
 function syncRunForm() {
   const isNew = profileMode() === "new";
   const existingSelection = runForm.elements.existing_selection.value;
+  const forceBrowserClose = browserCloseForced(data.executionMode, profileMode(), existingSelection);
   const showBatchOptions = isNew || existingSelection !== "profile";
   const concurrencyActive = runConcurrencyActive(profileMode(), existingSelection, runForm.elements.execution_mode.value);
   $("#existing-profile").hidden = isNew;
@@ -85,6 +89,8 @@ function syncRunForm() {
   runForm.elements.profile_name.required = isNew;
   runForm.elements.group_id.required = isNew;
   runForm.elements.delete_profile.disabled = !isNew;
+  runForm.elements.close_browser.disabled = forceBrowserClose;
+  if (forceBrowserClose) runForm.elements.close_browser.checked = true;
   $("#manual-proxy").hidden = !isNew || proxyMode() !== "manual";
   runForm.elements.raw_proxy.required = isNew && proxyMode() === "manual";
   $("#batch-options").hidden = !showBatchOptions;
@@ -277,7 +283,7 @@ async function optionalLoad(path, fallback) {
 async function load() {
   const history = loadRuns();
   const [health, workflows, groups, profiles, settings, schedules] = await Promise.all([optionalLoad("health", null), optionalLoad("gemlogin/workflows", []), optionalLoad("gemlogin/groups", []), optionalLoad("gemlogin/profiles", []), optionalLoad("settings", null), optionalLoad("schedules", [])]);
-  data = {...data, workflows, groups, profiles, schedules};
+  data = {...data, workflows, groups, profiles, schedules, executionMode: health?.execution_mode ?? null};
   status.dataset.state = health?.app === "ok" ? "ready" : "error";
   status.textContent = health?.app === "ok" ? `Service ready; GemLogin ${health.gemlogin}.` : "Service unavailable.";
   renderSettings(settings);
@@ -325,7 +331,9 @@ function initialize() {
   runForm.addEventListener("submit", async (event) => {
   event.preventDefault(); setError("");
   const form = new FormData(runForm); const workflow = data.workflows.find((item) => String(item.id) === form.get("workflow_id"));
-  const payload = {workflow_id: form.get("workflow_id"), workflow_name: workflow?.name || null, profile_mode: form.get("profile_mode"), close_browser: form.has("close_browser"), delete_profile: form.get("profile_mode") === "new" && form.has("delete_profile"), parameter: {}};
+  const selectedProfileMode = form.get("profile_mode");
+  const forceBrowserClose = browserCloseForced(data.executionMode, selectedProfileMode, form.get("existing_selection"));
+  const payload = {workflow_id: form.get("workflow_id"), workflow_name: workflow?.name || null, profile_mode: selectedProfileMode, close_browser: forceBrowserClose || form.has("close_browser"), delete_profile: selectedProfileMode === "new" && form.has("delete_profile"), parameter: {}};
   payload.parameter = serializeParameters($("#parameters").querySelectorAll("[name^='parameter.']"));
   if (payload.profile_mode === "existing") {
     const profileIds = selectExistingProfileIds(data.profiles, form.get("existing_selection"), form.get("profile_id"), form.get("existing_group_id"));

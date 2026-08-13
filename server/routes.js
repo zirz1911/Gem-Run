@@ -89,17 +89,18 @@ function validScheduledRun(input, runService) {
 function unavailable(response) { return response.status(503).json({error: "GemLogin unavailable", code: "gemlogin_unavailable"}); }
 function proxyById(proxyStore, id) { return proxyStore.list().find((proxy) => String(proxy.id) === String(id)); }
 
-export function createRoutes({gemloginClient, proxyStore, runStore, runService, settingsStore, scheduleStore = null, scheduler = null}) {
+export function createRoutes({config, gemloginClient, proxyStore, runStore, runService, settingsStore, scheduleStore = null, scheduler = null}) {
   const router = express.Router();
+  const executionMode = config?.gemloginExecutionMode ?? "cloud";
   const gemlogin = (method, map) => async (_request, response) => {
     if (!gemloginClient) return unavailable(response);
     try { return response.json(map(await gemloginClient[method]())); } catch { return unavailable(response); }
   };
 
   router.get("/api/health", async (_request, response) => {
-    if (!gemloginClient) return response.json({app: "ok", gemlogin: "not configured"});
-    try { await gemloginClient.status(); return response.json({app: "ok", gemlogin: "available"}); }
-    catch { return response.json({app: "ok", gemlogin: "unavailable"}); }
+    if (!gemloginClient) return response.json({app: "ok", gemlogin: "not configured", execution_mode: executionMode});
+    try { await gemloginClient.status(); return response.json({app: "ok", gemlogin: "available", execution_mode: executionMode}); }
+    catch { return response.json({app: "ok", gemlogin: "unavailable", execution_mode: executionMode}); }
   });
   router.get("/api/settings", (_request, response) => response.json(safeSettings(gemloginClient)));
   router.patch("/api/settings", (request, response) => {

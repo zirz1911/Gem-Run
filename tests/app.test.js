@@ -23,10 +23,26 @@ test("health reports configured GemLogin availability without forwarding its res
     runService: null
   });
   const server = app.listen(0);
-  const {port} = server.address();
-  const response = await fetch(`http://127.0.0.1:${port}/api/health`);
-  assert.deepEqual(await response.json(), {app: "ok", gemlogin: "available"});
-  await new Promise((resolve) => server.close(resolve));
+  try {
+    const {port} = server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/api/health`);
+    assert.deepEqual(await response.json(), {app: "ok", gemlogin: "available", execution_mode: "cloud"});
+  } finally { await new Promise((resolve) => server.close(resolve)); }
+});
+
+test("health exposes Local execution mode without credentials", async () => {
+  const app = createApp({
+    config: loadConfig({GEMLOGIN_EXECUTION_MODE: "local"}),
+    gemloginClient: {status: async () => ({success: true, token: "must-not-leak"})},
+    db: null,
+    runService: null
+  });
+  const server = app.listen(0);
+  try {
+    const {port} = server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/api/health`);
+    assert.deepEqual(await response.json(), {app: "ok", gemlogin: "available", execution_mode: "local"});
+  } finally { await new Promise((resolve) => server.close(resolve)); }
 });
 
 test("run-start errors use a static response", async () => {
