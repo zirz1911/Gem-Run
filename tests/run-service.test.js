@@ -3,12 +3,13 @@ import test from "node:test";
 import {RunService} from "../server/run-service.js";
 import {normalizeRemoteStatus} from "../server/status.js";
 
-function makeContext({remoteStatus = "success", remotePayload, hangStatus = false, hangCreate = false, hangSubmit = false, executeError, deleteError, deleteErrors, runTimeoutSeconds = 30, executionDelay = 0, realTime = false, gemloginExecutionMode = "cloud"} = {}) {
+function makeContext({remoteStatus = "success", remotePayload, runningPolls = 0, hangStatus = false, hangCreate = false, hangSubmit = false, executeError, deleteError, deleteErrors, runTimeoutSeconds = 30, executionDelay = 0, realTime = false, gemloginExecutionMode = "cloud"} = {}) {
   const records = new Map();
   let nextId = 1;
   let nextProfileId = 98;
   let activeExecutions = 0;
   let maxActiveExecutions = 0;
+  const statusChecks = new Map();
   const calls = [];
   const client = {
     calls,
@@ -27,7 +28,13 @@ function makeContext({remoteStatus = "success", remotePayload, hangStatus = fals
       if (executionDelay) { activeExecutions += 1; maxActiveExecutions = Math.max(maxActiveExecutions, activeExecutions); await new Promise((resolve) => setTimeout(resolve, executionDelay)); activeExecutions -= 1; }
       return {data: {id: "remote-1", status: "submitted"}};
     },
-    async checkScriptStatus() { calls.push({name: "checkScriptStatus"}); return hangStatus ? new Promise(() => {}) : (remotePayload ?? {data: {status: remoteStatus}}); },
+    async checkScriptStatus(_workflowId, profileId) {
+      calls.push({name: "checkScriptStatus"});
+      if (hangStatus) return new Promise(() => {});
+      const checks = statusChecks.get(String(profileId)) ?? 0;
+      statusChecks.set(String(profileId), checks + 1);
+      return checks < runningPolls ? {data: {status: "running"}} : (remotePayload ?? {data: {status: remoteStatus}});
+    },
     async closeProfile(profileId) { calls.push({name: "closeProfile", profileId}); },
     async deleteProfile(profileId) { calls.push({name: "deleteProfile", profileId}); const error = deleteErrors?.shift() ?? deleteError; if (error) throw error; }
   };
@@ -85,6 +92,13 @@ test("existing profile batch runs every selected profile", async () => {
   assert.equal(batch.runs.length, 2);
   assert.deepEqual(ctx.client.calls.filter(({name}) => name === "executeCloud").map(({details}) => details.profileId), ["63", "64"]);
   assert.deepEqual([1, 2].map((id) => ctx.store.get(`run-${id}`).status), ["done", "done"]);
+});
+
+test("queued batch runs get a full timeout after their worker starts", async () => {
+  const ctx = makeContext({runningPolls: 1, runTimeoutSeconds: 3});
+  await ctx.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_ids: [61, 62, 63, 64]});
+  await ctx.drain();
+  assert.deepEqual([1, 2, 3, 4].map((id) => ctx.store.get(`run-${id}`).error_message), [null, null, null, null]);
 });
 
 test("local execution mode submits existing and new profiles through Local API", async () => {
