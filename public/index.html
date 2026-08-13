@@ -42,7 +42,10 @@
           <form id="run-form">
             <div class="form-grid form-grid-primary">
               <label class="field field-wide"><span>Workflow</span><select id="workflow" name="workflow_id" required></select></label>
-              <div id="existing-profile"><label class="field"><span>Existing profile</span><select id="profile" name="profile_id"></select></label></div>
+              <div id="existing-profile">
+                <fieldset class="choice-fieldset"><legend>Existing profiles</legend><div class="choice-grid choice-grid-three"><label class="choice-card compact-choice"><input type="radio" name="existing_selection" value="profile" checked><span><strong>One profile</strong><small>Choose a single profile.</small></span></label><label class="choice-card compact-choice"><input type="radio" name="existing_selection" value="group"><span><strong>Group</strong><small>Run every profile in a group.</small></span></label><label class="choice-card compact-choice"><input type="radio" name="existing_selection" value="all"><span><strong>All profiles</strong><small>Run every loaded profile.</small></span></label></div></fieldset>
+                <div class="form-grid"><label id="existing-profile-field" class="field"><span>Existing profile</span><select id="profile" name="profile_id"></select></label><label id="existing-group-field" class="field" hidden><span>Existing profile group</span><select id="existing-group" name="existing_group_id"></select></label></div>
+              </div>
             </div>
             <fieldset class="choice-fieldset"><legend>Profile mode</legend>
               <div class="choice-grid">
@@ -66,7 +69,7 @@
               <label id="manual-proxy" class="field" hidden><span>One-time proxy</span><input name="raw_proxy" type="password" autocomplete="off" spellcheck="false" placeholder="host:port:user:pass"></label>
               <div class="batch-options">
                 <div class="form-grid">
-                  <label class="field"><span>New profiles / rounds</span><input name="repeat_count" type="number" min="1" max="100" value="1" inputmode="numeric"></label>
+                  <label class="field"><span>New profiles / rounds</span><input name="repeat_count" type="number" min="1" max="500" value="1" inputmode="numeric"></label>
                   <fieldset class="choice-fieldset"><legend>Run mode</legend><div class="choice-grid"><label class="choice-card compact-choice"><input type="radio" name="execution_mode" value="sequential" checked><span><strong>One by one</strong><small>Safer and easier to monitor.</small></span></label><label class="choice-card compact-choice"><input type="radio" name="execution_mode" value="parallel"><span><strong>Parallel</strong><small>Run several profiles at once.</small></span></label></div></fieldset>
                 </div>
                 <label id="parallel-options" class="field" hidden><span>Maximum concurrent profiles</span><input name="max_concurrency" type="number" min="1" max="10" value="2" inputmode="numeric"><small class="input-hint">Start with 2; GemLogin performance and workflow behavior can limit this.</small></label>

@@ -5,12 +5,13 @@ import {validateScheduleInput} from "./schedule.js";
 const invalidRunRequests = new Set([
   "workflow_id is required", "profile_mode must be existing or new", "profile_id is required",
   "cleanup is only available for new profiles", "profile_name is required", "group_id is required",
-  "proxy_mode must be none, manual, or random", "repeat_count must be between 1 and 100", "repeat_count is only available for new profiles",
+  "profile_ids are invalid", "profile_ids are only available for existing profiles",
+  "proxy_mode must be none, manual, or random", "repeat_count must be between 1 and 500", "repeat_count is only available for new profiles",
   "execution_mode must be sequential or parallel", "max_concurrency must be between 1 and 10", "not enough enabled proxies for batch", "Proxy must be a string",
   "Proxy must include host, port, and complete credentials", "Proxy host is invalid",
   "Proxy port must be between 1 and 65535"
 ]);
-const runFields = ["workflow_id", "workflow_name", "profile_mode", "profile_id", "profile_name", "group_id", "proxy_mode", "raw_proxy", "parameter", "cleanup_requested", "close_browser", "delete_profile", "repeat_count", "execution_mode", "max_concurrency"];
+const runFields = ["workflow_id", "workflow_name", "profile_mode", "profile_id", "profile_ids", "profile_name", "group_id", "proxy_mode", "raw_proxy", "parameter", "cleanup_requested", "close_browser", "delete_profile", "repeat_count", "execution_mode", "max_concurrency"];
 const sensitiveName = /(?:api[_-]?key|access[_-]?key|private[_-]?key|authorization|(?:^|[_-])auth(?:$|[_-])|(?:^|[_-])bearer(?:$|[_-])|(?:^|[_-])headers?(?:$|[_-])|(?:^|[_-])config(?:uration)?(?:$|[_-])|cookie|credential|pass(?:word)?|secret|token|user(?:name)?)/i;
 
 function items(payload) { return Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []; }

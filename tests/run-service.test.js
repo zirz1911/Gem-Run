@@ -78,6 +78,15 @@ test("existing profile never calls create or delete", async () => {
   assert.deepEqual(ctx.store.updates.filter(({status}) => status).map(({status}) => status), ["submitted", "success", "done"]);
 });
 
+test("existing profile batch runs every selected profile", async () => {
+  const ctx = makeContext({remoteStatus: "success"});
+  const batch = await ctx.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_ids: [63, 64]});
+  await ctx.drain();
+  assert.equal(batch.runs.length, 2);
+  assert.deepEqual(ctx.client.calls.filter(({name}) => name === "executeCloud").map(({details}) => details.profileId), ["63", "64"]);
+  assert.deepEqual([1, 2].map((id) => ctx.store.get(`run-${id}`).status), ["done", "done"]);
+});
+
 test("local execution mode submits existing and new profiles through Local API", async () => {
   const existing = makeContext({gemloginExecutionMode: "local"});
   await existing.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_id: 63, parameter: {keyword_file: "keywords.txt"}});
@@ -143,6 +152,12 @@ test("batch settings are only valid for new profiles", async () => {
   const ctx = makeContext();
   await assert.rejects(() => ctx.service.start({workflow_id: "wf-1", profile_mode: "existing", profile_id: 63, cleanup_requested: false, repeat_count: 2}), /repeat_count/);
   await assert.rejects(() => ctx.service.start({workflow_id: "wf-1", profile_mode: "new", profile_name: "Batch", group_id: "1", proxy_mode: "none", repeat_count: 2, execution_mode: "parallel", max_concurrency: 0}), /max_concurrency/);
+});
+
+test("new profile batches accept 500 rounds and reject 501", () => {
+  const ctx = makeContext();
+  assert.doesNotThrow(() => ctx.service.validate({workflow_id: "wf-1", profile_mode: "new", profile_name: "Batch", group_id: "1", proxy_mode: "none", repeat_count: 500}));
+  assert.throws(() => ctx.service.validate({workflow_id: "wf-1", profile_mode: "new", profile_name: "Batch", group_id: "1", proxy_mode: "none", repeat_count: 501}), /repeat_count/);
 });
 
 test("does not treat an unstarted workflow as success", async () => {

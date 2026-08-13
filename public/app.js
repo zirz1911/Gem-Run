@@ -16,6 +16,11 @@ export function serializeParameters(controls) {
 export function parseProxyLines(value) {
   return String(value ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
+export function selectExistingProfileIds(profiles, selection, profileId, groupId) {
+  if (selection === "all") return profiles.map(({id}) => id);
+  if (selection === "group") return profiles.filter((profile) => String(profile.group_id) === String(groupId)).map(({id}) => id);
+  return profileId ? [profileId] : [];
+}
 export function parameterControlType(parameter) {
   if (["divider", "label", "inline"].includes(parameter.type)) return null;
   if (Array.isArray(parameter.options)) return "select";
@@ -59,9 +64,13 @@ function renderSettings(settings) {
 }
 function syncRunForm() {
   const isNew = profileMode() === "new";
+  const existingSelection = runForm.elements.existing_selection.value;
   $("#existing-profile").hidden = isNew;
   $("#new-profile").hidden = !isNew;
-  runForm.elements.profile_id.required = !isNew;
+  $("#existing-profile-field").hidden = existingSelection !== "profile";
+  $("#existing-group-field").hidden = existingSelection !== "group";
+  runForm.elements.profile_id.required = !isNew && existingSelection === "profile";
+  runForm.elements.existing_group_id.required = !isNew && existingSelection === "group";
   runForm.elements.profile_name.required = isNew;
   runForm.elements.group_id.required = isNew;
   runForm.elements.delete_profile.disabled = !isNew;
@@ -251,7 +260,7 @@ async function load() {
   status.dataset.state = health?.app === "ok" ? "ready" : "error";
   status.textContent = health?.app === "ok" ? `Service ready; GemLogin ${health.gemlogin}.` : "Service unavailable.";
   renderSettings(settings);
-  option($("#workflow"), workflows, "Choose a workflow"); option($("#group"), groups, "Choose a group"); option($("#profile"), profiles, "Choose a profile"); option($("#schedule-workflow"), workflows, "Choose a workflow"); option($("#schedule-group"), groups, "Choose a group");
+  option($("#workflow"), workflows, "Choose a workflow"); option($("#group"), groups, "Choose a group"); option($("#existing-group"), groups, "Choose a group"); option($("#profile"), profiles, "Choose a profile"); option($("#schedule-workflow"), workflows, "Choose a workflow"); option($("#schedule-group"), groups, "Choose a group");
   renderProfiles(); renderParameters(); renderScheduleParameters(); renderSchedules(schedules); await Promise.all([loadProxies(), history]);
 }
 async function updateProxy(id, payload, raw) {
@@ -288,7 +297,7 @@ function poll(id) {
 function initialize() {
   status = $("#status"); error = $("#error"); runForm = $("#run-form"); proxyForm = $("#proxy-form"); settingsForm = $("#settings-form"); scheduleForm = $("#schedule-form");
   syncRunForm();
-  runForm.addEventListener("change", (event) => { if (["profile_mode", "proxy_mode", "execution_mode"].includes(event.target.name)) syncRunForm(); if (event.target.id === "workflow") renderParameters(); });
+  runForm.addEventListener("change", (event) => { if (["profile_mode", "existing_selection", "proxy_mode", "execution_mode"].includes(event.target.name)) syncRunForm(); if (event.target.id === "workflow") renderParameters(); });
   scheduleForm.addEventListener("change", (event) => { if (event.target.name === "type") syncScheduleForm(); if (["profile_count", "max_concurrency"].includes(event.target.name)) syncScheduleConcurrency(); if (event.target.id === "schedule-workflow") renderScheduleParameters(); });
   scheduleForm.addEventListener("input", (event) => { if (["profile_count", "max_concurrency"].includes(event.target.name)) syncScheduleConcurrency(); });
   runForm.addEventListener("submit", async (event) => {
@@ -296,7 +305,11 @@ function initialize() {
   const form = new FormData(runForm); const workflow = data.workflows.find((item) => String(item.id) === form.get("workflow_id"));
   const payload = {workflow_id: form.get("workflow_id"), workflow_name: workflow?.name || null, profile_mode: form.get("profile_mode"), close_browser: form.has("close_browser"), delete_profile: form.get("profile_mode") === "new" && form.has("delete_profile"), parameter: {}};
   payload.parameter = serializeParameters($("#parameters").querySelectorAll("[name^='parameter.']"));
-  if (payload.profile_mode === "existing") payload.profile_id = form.get("profile_id");
+  if (payload.profile_mode === "existing") {
+    const profileIds = selectExistingProfileIds(data.profiles, form.get("existing_selection"), form.get("profile_id"), form.get("existing_group_id"));
+    if (!profileIds.length) { setError("No existing profiles match this selection."); return; }
+    if (profileIds.length === 1) payload.profile_id = profileIds[0]; else payload.profile_ids = profileIds;
+  }
   else Object.assign(payload, {profile_name: form.get("profile_name"), group_id: form.get("group_id"), proxy_mode: form.get("proxy_mode"), repeat_count: Number(form.get("repeat_count") || 1), execution_mode: form.get("execution_mode"), max_concurrency: form.get("execution_mode") === "parallel" ? Number(form.get("max_concurrency") || 2) : 1, ...(form.get("proxy_mode") === "manual" ? {raw_proxy: form.get("raw_proxy")} : {})});
   try { $("#run-submit").disabled = true; const run = await api("runs", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(payload)}); runForm.elements.raw_proxy.value = ""; status.textContent = `${run.batch_id ? `Batch ${run.batch_id}` : `Run #${run.id}`} started.`; await loadRuns(); }
   catch (cause) { setError(cause.message); $("#run-submit").disabled = false; }

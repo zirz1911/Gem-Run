@@ -97,6 +97,17 @@ test("batch run route forwards repeat and concurrency settings", async () => {
   assert.deepEqual(body, {batch_id: "batch-1", runs: []});
 });
 
+test("existing batch route forwards selected profile ids", async () => {
+  const received = {value: null};
+  const runService = {async start(input) { received.value = input; return {batch_id: "batch-1", runs: []}; }, get: () => null};
+  const {status} = await request(makeApp({runService}), "/api/runs", {
+    method: "POST", headers: {"content-type": "application/json"},
+    body: JSON.stringify({workflow_id: "wf-1", profile_mode: "existing", profile_ids: [63, 64]})
+  });
+  assert.equal(status, 202);
+  assert.deepEqual(received.value.profile_ids, [63, 64]);
+});
+
 test("run route forwards close and delete options", async () => {
   const received = {value: null};
   const runService = {async start(input) { received.value = input; return {id: 1, ...input, status: "queued"}; }, get: () => null};

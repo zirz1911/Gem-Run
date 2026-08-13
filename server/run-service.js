@@ -57,9 +57,11 @@ export class RunService {
     }
     const deleteProfile = input.delete_profile ?? input.cleanup_requested ?? false;
     if (input.profile_mode === "existing") {
-      if (input.profile_id == null || input.profile_id === "") throw new Error("profile_id is required");
+      const profileIds = input.profile_ids ?? [input.profile_id];
+      if (!Array.isArray(profileIds) || !profileIds.length || profileIds.some((id) => !["string", "number"].includes(typeof id) || !String(id).trim()) || new Set(profileIds.map(String)).size !== profileIds.length) throw new Error("profile_ids are invalid");
       if (deleteProfile) throw new Error(input.cleanup_requested ? "cleanup is only available for new profiles" : "delete_profile is only available for new profiles");
     } else {
+      if (input.profile_ids !== undefined) throw new Error("profile_ids are only available for existing profiles");
       if (!String(input.profile_name || "").trim()) throw new Error("profile_name is required");
       if (input.group_id == null || input.group_id === "") throw new Error("group_id is required");
       const proxyMode = input.proxy_mode ?? "none";
@@ -67,7 +69,7 @@ export class RunService {
       if (proxyMode === "manual") parseProxy(input.raw_proxy);
     }
     const repeatCount = Number(input.repeat_count ?? 1);
-    if (!Number.isInteger(repeatCount) || repeatCount < 1 || repeatCount > 100) throw new Error("repeat_count must be between 1 and 100");
+    if (!Number.isInteger(repeatCount) || repeatCount < 1 || repeatCount > 500) throw new Error("repeat_count must be between 1 and 500");
     if (input.profile_mode === "existing" && repeatCount !== 1) throw new Error("repeat_count is only available for new profiles");
     const executionMode = input.execution_mode ?? "sequential";
     if (!["sequential", "parallel"].includes(executionMode)) throw new Error("execution_mode must be sequential or parallel");
@@ -78,7 +80,8 @@ export class RunService {
   async start(input, source = {}) {
     this.validate(input);
     if (this.runStore.findActive()) throw new Error("an active run already exists");
-    const repeatCount = Number(input.repeat_count ?? 1);
+    const profileIds = input.profile_mode === "existing" ? (input.profile_ids ?? [input.profile_id]) : [];
+    const repeatCount = input.profile_mode === "existing" ? profileIds.length : Number(input.repeat_count ?? 1);
     const executionMode = input.execution_mode ?? "sequential";
     const deleteProfile = input.delete_profile ?? input.cleanup_requested ?? false;
     const maxConcurrency = Math.min(Number(input.max_concurrency ?? (executionMode === "parallel" ? 2 : 1)), repeatCount);
@@ -87,7 +90,7 @@ export class RunService {
     const assignedProxies = this.assignProxies(input, repeatCount);
     const runs = Array.from({length: repeatCount}, (_, index) => this.runStore.create({
       workflow_id: String(input.workflow_id), workflow_name: input.workflow_name ?? null,
-      profile_mode: input.profile_mode, profile_id: input.profile_mode === "existing" ? String(input.profile_id) : null,
+      profile_mode: input.profile_mode, profile_id: input.profile_mode === "existing" ? String(profileIds[index]) : null,
       proxy_id: assignedProxies[index]?.id ?? null, cleanup_requested: Boolean(deleteProfile),
       close_browser: Boolean(input.close_browser ?? input.cleanup_requested ?? false), delete_profile: Boolean(deleteProfile), status: "queued",
       started_at: timestamp(this.clock), cleanup_status: deleteProfile ? "pending" : "not_requested", source: source.source ?? "manual",
